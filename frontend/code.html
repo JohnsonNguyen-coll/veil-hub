@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Veil Clubs - The Confidential Yield Layer</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&amp;family=Jetbrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"veil-black": "#000000", "veil-white": "#FFFFFF", "veil-gray-dark": "#1C1C1C", "veil-gray-light": "#333333", "veil-purple": "#bd00ff", "inverse-surface": "#e5e2e1", "on-background": "#e5e2e1", "surface-tint": "#ecb2ff", "tertiary-fixed": "#e5e2e1", "surface-container-lowest": "#0e0e0e", "on-primary": "#520071", "surface-container-high": "#2a2a2a", "secondary-fixed": "#e2e2e2", "on-secondary-container": "#b4b5b5", "outline-variant": "#514255", "surface-container": "#201f1f", "on-error-container": "#ffdad6", "on-primary-fixed": "#320047", "on-secondary": "#2f3131", tertiary: "#c8c6c5", background: "#131313", "on-tertiary": "#313030", secondary: "#c6c6c7", "primary-fixed": "#f8d8ff", "primary-container": "#bd00ff", "on-primary-fixed-variant": "#74009f", "on-primary-container": "#ffffff", "surface-bright": "#3a3939", "secondary-fixed-dim": "#c6c6c7", "inverse-primary": "#9900cf", outline: "#9d8ba0", "on-tertiary-container": "#ffffff", "glass-border": "#333333", "void-black": "#000000", "tertiary-container": "#777676", "surface-dim": "#131313", "primary-fixed-dim": "#ecb2ff", "inverse-on-surface": "#313030", "surface-container-low": "#1c1b1b", "on-surface": "#e5e2e1", "on-tertiary-fixed-variant": "#474746", "error-container": "#93000a", error: "#ffb4ab", "on-secondary-fixed": "#1a1c1c", "deep-charcoal": "#1C1C1C", surface: "#131313", "surface-variant": "#353534", "on-surface-variant": "#d4c0d7", "cyber-cyan": "#FFFFFF", "data-green": "#FFFFFF", "on-error": "#690005", "surface-container-highest": "#353534", "on-secondary-fixed-variant": "#454747", "electric-violet": "#BD00FF", "secondary-container": "#454747", "tertiary-fixed-dim": "#c8c6c5", "on-tertiary-fixed": "#1c1b1b", primary: "#ecb2ff"}, borderRadius: {DEFAULT: "0.125rem", lg: "0.25rem", xl: "0.5rem", full: "0.75rem"}, spacing: {"margin-desktop": "64px", "container-max": "1440px", gutter: "24px", "margin-mobile": "16px", unit: "4px"}, fontFamily: {"body-md": ["Hanken Grotesk", "sans-serif"], "data-display": ["JetBrains Mono", "monospace"], "headline-lg": ["Hanken Grotesk", "sans-serif"], "headline-lg-mobile": ["Hanken Grotesk", "sans-serif"], "label-caps": ["JetBrains Mono", "monospace"], "data-sm": ["JetBrains Mono", "monospace"], "headline-xl": ["Hanken Grotesk", "sans-serif"], headline: ["Hanken Grotesk"], display: ["Hanken Grotesk"], body: ["Hanken Grotesk"], label: ["Jetbrains Mono"]}, fontSize: {"body-md": ["16px", {lineHeight: "24px", fontWeight: "400"}], "data-display": ["18px", {lineHeight: "24px", letterSpacing: "0.05em", fontWeight: "500"}], "headline-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.01em", fontWeight: "600"}], "headline-lg-mobile": ["24px", {lineHeight: "32px", fontWeight: "600"}], "label-caps": ["11px", {lineHeight: "16px", letterSpacing: "0.1em", fontWeight: "700"}], "data-sm": ["13px", {lineHeight: "18px", fontWeight: "400"}], "headline-xl": ["48px", {lineHeight: "56px", letterSpacing: "-0.02em", fontWeight: "700"}]}}}};</script>
+<style>
+        body {
+            background-color: #000000;
+        }
+        .scramble-hover:hover {
+            box-shadow: 0 0 20px rgba(189, 0, 255, 0.2);
+            border-color: #bd00ff;
+        }
+        .pulse-green {
+            animation: pulse-green 2s infinite;
+        }
+        @keyframes pulse-green {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(0, 255, 0, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); }
+        }
+    </style>
+</head>
+<body class="text-on-background min-h-screen flex flex-col relative overflow-x-hidden bg-veil-black">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-veil-black border-b border-veil-gray-light">
+<div class="flex justify-between items-center px-margin-mobile md:px-margin-desktop py-4 w-full max-w-container-max mx-auto">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-veil-purple">lock</span>
+<span class="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-veil-white tracking-tighter">Veil Clubs</span>
+</div>
+<div class="hidden md:flex gap-8">
+<a class="font-body-md text-body-md text-veil-white font-bold border-b-2 border-veil-purple pb-1" href="#">Explore</a>
+<a class="font-body-md text-body-md text-veil-white opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Dashboard</a>
+</div>
+<div>
+<button class="bg-veil-purple text-veil-white font-label-caps text-label-caps px-6 py-3 hover:bg-opacity-90 transition-colors">
+                    Connect Wallet
+                </button>
+</div>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-grow pt-32 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full flex flex-col gap-24">
+<!-- Hero Section -->
+<section class="flex flex-col lg:flex-row items-center gap-12 min-h-[716px] relative">
+<div class="flex-1 flex flex-col gap-6 z-10">
+<h1 class="font-headline-xl text-[48px] md:text-[72px] leading-tight text-veil-white font-bold tracking-tighter uppercase">
+                    The Confidential<br/>
+<span class="text-veil-purple">Yield Layer</span>
+</h1>
+<p class="font-body-md text-body-md text-veil-white opacity-80 max-w-xl text-lg">
+                    No-loss prize pools with end-to-end encryption. Earn yield and win big without ever losing your principal. Designed for elite capital.
+                </p>
+<div class="flex flex-wrap gap-4 mt-8">
+<button class="bg-veil-purple text-veil-white font-label-caps text-label-caps px-8 py-4 hover:bg-opacity-90 transition-colors border border-veil-purple">
+                        Launch App
+                    </button>
+<button class="bg-transparent text-veil-white border border-veil-gray-light font-label-caps text-label-caps px-8 py-4 hover:bg-veil-gray-dark transition-colors">
+                        Explore Global Pool
+                    </button>
+</div>
+</div>
+<div class="flex-1 relative w-full h-[600px] lg:h-[800px] flex items-center justify-center pointer-events-auto" id="threejs-container-ANIMATION_RES"></div>
+</section>
+<!-- Protocol Stats -->
+<section class="border-y border-veil-gray-light py-8">
+<div class="flex flex-wrap justify-between items-center gap-8 px-4">
+<div class="flex flex-col gap-2">
+<span class="font-label-caps text-label-caps text-veil-white opacity-60 uppercase">Total Value Locked</span>
+<span class="font-data-display text-data-display text-veil-white font-bold">$142.5M</span>
+</div>
+<div class="flex flex-col gap-2">
+<span class="font-label-caps text-label-caps text-veil-white opacity-60 uppercase">Active Clubs</span>
+<span class="font-data-display text-data-display text-veil-white font-bold">1,248</span>
+</div>
+<div class="flex flex-col gap-2">
+<span class="font-label-caps text-label-caps text-veil-white opacity-60 uppercase">Network Status</span>
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 bg-green-500 rounded-full pulse-green"></span>
+<span class="font-data-sm text-data-sm text-veil-white font-bold">Encrypted</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Features Bento Grid -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-0 border border-veil-gray-light">
+<div class="bg-veil-gray-dark p-8 border-r border-b md:border-b-0 border-veil-gray-light flex flex-col gap-6 relative min-h-[300px] scramble-hover transition-all duration-300 border border-transparent">
+<span class="font-data-sm text-data-sm text-veil-white opacity-40 absolute top-6 right-6">01</span>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-veil-white font-bold uppercase mt-8 tracking-tight scramble-target" data-original="No-Loss Pools">No-Loss Pools</h3>
+<p class="font-body-md text-body-md text-veil-white opacity-70 scramble-target" data-original="Deposit stablecoins into encrypted vaults. Interest generated is pooled and awarded securely to random winners.">
+                    Deposit stablecoins into encrypted vaults. Interest generated is pooled and awarded securely to random winners.
+                </p>
+<div class="mt-auto pt-4 border-t border-veil-gray-light">
+<span class="font-data-sm text-data-sm text-veil-white opacity-80 uppercase">&gt; YIELD_GENERATION_ACTIVE</span>
+</div>
+</div>
+<div class="bg-veil-gray-dark p-8 border-r border-b md:border-b-0 border-veil-gray-light flex flex-col gap-6 relative min-h-[300px] scramble-hover transition-all duration-300 border border-transparent">
+<span class="font-data-sm text-data-sm text-veil-white opacity-40 absolute top-6 right-6">02</span>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-veil-white font-bold uppercase mt-8 tracking-tight scramble-target" data-original="Complete Privacy">Complete Privacy</h3>
+<p class="font-body-md text-body-md text-veil-white opacity-70 scramble-target" data-original="Zero-knowledge proofs ensure your balances, deposits, and winnings remain entirely confidential from public ledgers.">
+                    Zero-knowledge proofs ensure your balances, deposits, and winnings remain entirely confidential from public ledgers.
+                </p>
+<div class="mt-auto pt-4 border-t border-veil-gray-light">
+<span class="font-data-sm text-data-sm text-veil-white opacity-80 uppercase">&gt; ZK_PROOFS_VERIFIED</span>
+</div>
+</div>
+<div class="bg-veil-gray-dark p-8 flex flex-col gap-6 relative min-h-[300px] scramble-hover transition-all duration-300 border border-transparent">
+<span class="font-data-sm text-data-sm text-veil-white opacity-40 absolute top-6 right-6">03</span>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-veil-white font-bold uppercase mt-8 tracking-tight scramble-target" data-original="Social Yield">Social Yield</h3>
+<p class="font-body-md text-body-md text-veil-white opacity-70 scramble-target" data-original="Form private clubs to pool capital and increase winning odds collaboratively, maintaining strict group anonymity.">
+                    Form private clubs to pool capital and increase winning odds collaboratively, maintaining strict group anonymity.
+                </p>
+<div class="mt-auto pt-4 border-t border-veil-gray-light">
+<span class="font-data-sm text-data-sm text-veil-white opacity-80 uppercase">&gt; SYNDICATE_SYNC_ON</span>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-veil-black border-t border-veil-gray-light py-16 w-full mt-auto">
+<div class="px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-veil-purple">lock</span>
+<span class="font-headline-lg-mobile text-headline-lg-mobile text-veil-white tracking-tighter">Veil Clubs</span>
+</div>
+<p class="font-body-md text-body-md text-veil-white opacity-60">The Confidential Yield Layer.</p>
+</div>
+<div class="flex flex-col gap-4">
+<span class="font-label-caps text-label-caps text-veil-white opacity-40 uppercase">Protocol</span>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">Global Pool</a>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">Private Clubs</a>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">Yields</a>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">Security</a>
+</div>
+<div class="flex flex-col gap-4">
+<span class="font-label-caps text-label-caps text-veil-white opacity-40 uppercase">Governance</span>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">DAO</a>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">Docs</a>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">Brand</a>
+</div>
+<div class="flex flex-col gap-4">
+<span class="font-label-caps text-label-caps text-veil-white opacity-40 uppercase">Socials</span>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">X</a>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">Discord</a>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">Telegram</a>
+<a class="font-data-sm text-data-sm text-veil-white opacity-80 hover:text-veil-purple transition-colors" href="#">GitHub</a>
+</div>
+</div>
+<div class="pt-8 border-t border-veil-gray-light flex flex-col md:flex-row justify-between items-center gap-6">
+<span class="font-data-sm text-data-sm text-veil-white opacity-60 uppercase">© 2024 Veil Clubs.</span>
+<div class="flex gap-6">
+<a class="font-data-sm text-data-sm text-veil-white opacity-60 hover:opacity-100 transition-opacity uppercase" href="#">Privacy Protocol</a>
+<a class="font-data-sm text-data-sm text-veil-white opacity-60 hover:opacity-100 transition-opacity uppercase" href="#">Terms of Access</a>
+</div>
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 bg-green-500 rounded-full pulse-green"></span>
+<span class="font-label-caps text-label-caps text-veil-white uppercase">Status: Fully Encrypted</span>
+</div>
+</div>
+</div>
+</footer>
+<script>
+    // Scramble Effect
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+';
+    const cards = document.querySelectorAll('.scramble-hover');
+    
+    cards.forEach(card => {
+        const targets = card.querySelectorAll('.scramble-target');
+        let isScrambling = false;
+        
+        card.addEventListener('mouseenter', () => {
+            if (isScrambling) return;
+            isScrambling = true;
+            
+            targets.forEach(target => {
+                const originalText = target.dataset.original;
+                let iteration = 0;
+                
+                const interval = setInterval(() => {
+                    target.innerText = originalText.split('').map((letter, index) => {
+                        if (index < iteration || letter === ' ') return originalText[index];
+                        return chars[Math.floor(Math.random() * chars.length)];
+                    }).join('');
+                    
+                    if (iteration >= originalText.length) {
+                        clearInterval(interval);
+                        target.innerText = originalText;
+                    }
+                    
+                    iteration += originalText.length / 10;
+                }, 30);
+            });
+            
+            setTimeout(() => {
+                isScrambling = false;
+            }, 500);
+        });
+    });
+
+    // Three.js Globe Animation
+    (function() {
+      const container = document.getElementById('threejs-container-ANIMATION_RES');
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      
+      const width = container.clientWidth || window.innerWidth;
+      const height = container.clientHeight || window.innerHeight;
+
+      const scene = new THREE.Scene();
+      // Adjust camera to fit the globe better without clipping - moved further back
+      const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+      camera.position.z = 2.8; 
+
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(devicePixelRatio);
+      container.appendChild(renderer.domElement);
+
+      // Globe Geometry - Slightly smaller to prevent clipping
+      const geometry = new THREE.SphereGeometry(1, 64, 64);
+
+      const material = new THREE.MeshPhongMaterial({
+        color: 0xbd00ff,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.8,
+        emissive: 0xbd00ff,
+        emissiveIntensity: 0.5,
+      });
+
+      const globe = new THREE.Mesh(geometry, material);
+      scene.add(globe);
+
+      const coreGeometry = new THREE.SphereGeometry(0.98, 32, 32);
+      const coreMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.3
+      });
+      const core = new THREE.Mesh(coreGeometry, coreMaterial);
+      scene.add(core);
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+
+      const pointLight = new THREE.PointLight(0xffffff, 1.2);
+      pointLight.position.set(5, 5, 5);
+      scene.add(pointLight);
+
+      let mouseX = 0;
+      let mouseY = 0;
+      let targetRotationX = 0;
+      let targetRotationY = 0;
+
+      window.addEventListener('mousemove', (event) => {
+        const rect = container.getBoundingClientRect();
+        mouseX = (event.clientX - rect.left) / rect.width * 2 - 1;
+        mouseY = -(event.clientY - rect.top) / rect.height * 2 + 1;
+        
+        targetRotationY = mouseX * Math.PI * 0.4;
+        targetRotationX = -mouseY * Math.PI * 0.4;
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        
+        globe.rotation.y += (targetRotationY - globe.rotation.y) * 0.05;
+        globe.rotation.x += (targetRotationX - globe.rotation.x) * 0.05;
+        globe.rotation.y += 0.003; 
+        
+        renderer.render(scene, camera);
+      }
+
+      window.addEventListener('resize', () => {
+        const newWidth = container.clientWidth || window.innerWidth;
+        const newHeight = container.clientHeight || window.innerHeight;
+        camera.aspect = newWidth / newHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(newWidth, newHeight);
+      });
+
+      animate();
+    })();
+</script>
+</body></html>
