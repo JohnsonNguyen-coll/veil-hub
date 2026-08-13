@@ -241,6 +241,49 @@ function StatusDot({ label }) {
   );
 }
 
+const landingBriefs = [
+  {
+    eyebrow: "01 / Product",
+    title: "Global Pool + Private Clubs",
+    body: "Veil Clubs is a confidential no-loss prize pool. New users can enter the public Global Pool, while groups can create invitation-only clubs with independent deposits, yield, and draws.",
+    bullets: ["Public onboarding pool", "Invite-based private clubs", "No-loss principal withdrawals", "Mock yield prize source"]
+  },
+  {
+    eyebrow: "02 / Privacy",
+    title: "Encrypted Financial State",
+    body: "Balances, deposits, winnings, total club capital, and odds are represented as ciphertext handles. Users decrypt only their own eligible values through wallet-signed user decryption.",
+    bullets: ["Private balances", "Private prize amounts", "Private odds", "Public events only where needed"]
+  },
+  {
+    eyebrow: "03 / Draws",
+    title: "Confidential Weighted Prize Draws",
+    body: "The target draw design selects winners from encrypted balances without decrypting member deposits. The MVP documents public leakage and separates demo hooks from the final FHE selector.",
+    bullets: ["Weighted by encrypted principal", "No plaintext balance selection", "Keeper/admin trigger path", "Gas limits documented"]
+  },
+  {
+    eyebrow: "04 / Stack",
+    title: "Privacy-First Infrastructure",
+    body: "The system is split so sensitive financial state stays encrypted while the interface remains fast, readable, and easy to demo. Public metadata is separated from confidential pool state.",
+    bullets: ["Encrypted pool accounting", "Wallet-based access", "Public event history", "Keeper-ready draw flow"]
+  }
+];
+
+const userFlow = [
+  ["Connect", "Connect a Sepolia wallet and prepare encrypted transaction inputs."],
+  ["Enter", "Join the Global Pool or create/join a Private Club by invite code."],
+  ["Deposit", "Encrypt deposit amount client-side and submit proof to the pool contract."],
+  ["Draw", "Keeper or admin triggers a scheduled prize draw using encrypted state."],
+  ["Decrypt", "Winner decrypts claimable prize; users can decrypt their own balance."],
+  ["Withdraw", "Principal remains no-loss and can be withdrawn when the user exits."]
+];
+
+const privacyRows = [
+  ["Hidden", "Individual balances, deposit amounts, winnings, odds, total private club capital"],
+  ["User-only", "Own balance, own winnings, own claimable prize after wallet-authorized decryption"],
+  ["Public", "Pool ids, draw timestamps, tx hashes, optional winner address, public metadata"],
+  ["Backend", "Stores only metadata and event cache; never stores decrypted values"]
+];
+
 function LandingPage({ goApp, goGlobal }) {
   return (
     <>
@@ -269,12 +312,28 @@ function LandingPage({ goApp, goGlobal }) {
 
         <section className="border-y border-veil-gray-light py-8">
           <div className="flex flex-wrap justify-between items-center gap-8 px-4">
-            <StatBlock label="Total Value Locked" value="$142.5M" />
-            <StatBlock label="Active Clubs" value="1,248" />
+            <StatBlock label="Protocol Type" value="No-Loss" status="POOLTOGETHER_STYLE" />
+            <StatBlock label="Privacy Layer" value="FHEVM" status="ZAMA_PROTOCOL" />
+            <StatBlock label="Token Standard" value="ERC-7984" status="CONFIDENTIAL_ASSET" />
             <div className="flex flex-col gap-2">
               <span className="font-label-caps text-label-caps text-veil-white opacity-60 uppercase">Network Status</span>
               <StatusDot label="Encrypted" />
             </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-10 border-y border-veil-gray-light py-12">
+          <div>
+            <span className="font-label-caps text-label-caps text-veil-purple uppercase">System Overview</span>
+            <h2 className="font-headline-lg text-headline-lg text-veil-white uppercase mt-4">What Veil Clubs Is</h2>
+            <p className="font-body-md text-body-md text-veil-white opacity-70 mt-4">
+              A confidential social savings game where users keep their principal, contribute encrypted deposits to yield-producing pools, and periodically compete for encrypted prize payouts.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border border-veil-gray-light">
+            {landingBriefs.map((item) => (
+              <LandingBriefCard item={item} key={item.eyebrow} />
+            ))}
           </div>
         </section>
 
@@ -300,9 +359,176 @@ function LandingPage({ goApp, goGlobal }) {
             title="Social Yield"
           />
         </section>
+
+        <LandingSection
+          eyebrow="Product Surfaces"
+          title="Two Entry Points, One Confidential Core"
+          body="The MVP is intentionally focused. It avoids many pool variants and instead makes the Global Pool and Private Clubs feel complete, understandable, and easy to demo."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <SpecPanel
+              title="Global Pool"
+              rows={[
+                ["Access", "Open to every connected wallet"],
+                ["Purpose", "Fast onboarding and public demo flow"],
+                ["Privacy", "Balances and winnings stay encrypted"],
+                ["Actions", "Deposit, decrypt own balance, draw, claim, withdraw"]
+              ]}
+            />
+            <SpecPanel
+              title="Private Club"
+              rows={[
+                ["Access", "Invite code or private link"],
+                ["Purpose", "Social prize pool for trusted groups"],
+                ["Privacy", "Optional anonymous members and encrypted pool state"],
+                ["Actions", "Create club, invite, deposit, keeper draw, withdraw"]
+              ]}
+            />
+          </div>
+        </LandingSection>
+
+        <LandingSection
+          eyebrow="User Flow"
+          title="From Wallet To No-Loss Prize Draw"
+          body="The interface is designed around a simple path that judges and users can understand without reading contract code."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-veil-gray-light">
+            {userFlow.map(([title, body], index) => (
+              <ProcessCard body={body} index={String(index + 1).padStart(2, "0")} key={title} title={title} />
+            ))}
+          </div>
+        </LandingSection>
+
+        <LandingSection
+          eyebrow="Privacy Model"
+          title="What Is Hidden And What Is Public"
+          body="The project is explicit about privacy boundaries. Confidentiality is not treated as decoration; it is documented as part of the product surface."
+        >
+          <div className="border border-veil-gray-light">
+            {privacyRows.map(([label, value]) => (
+              <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] border-b last:border-b-0 border-veil-gray-light" key={label}>
+                <div className="bg-veil-gray-dark p-5">
+                  <span className="font-label-caps text-label-caps text-veil-purple uppercase">{label}</span>
+                </div>
+                <div className="p-5">
+                  <span className="font-body-md text-body-md text-veil-white opacity-75">{value}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </LandingSection>
+
+        <LandingSection
+          eyebrow="System Design"
+          title="Built For Private Pool Operations"
+          body="Veil Clubs keeps the user-facing flow simple while preserving strict boundaries around confidential balances, prize amounts, and personal performance."
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 border border-veil-gray-light">
+            <ArchitectureCard title="Private Assets" status="CONFIDENTIAL_BALANCES" body="Deposits, balances, pool totals, odds, and winnings are handled as encrypted values instead of public numbers." />
+            <ArchitectureCard title="Prize Pools" status="GLOBAL_AND_PRIVATE" body="Users can enter the open Global Pool or join smaller invite-only clubs, each with its own draw schedule and prize history." />
+            <ArchitectureCard title="Operations" status="KEEPER_READY" body="Draws, faucet access, invite codes, and public event history are organized so the demo feels reliable without exposing private data." />
+          </div>
+        </LandingSection>
+
+        <LandingSection
+          eyebrow="MVP Boundaries"
+          title="Current Limits Are Documented"
+          body="The project is built to be honest in judging: the draw kernel and scalability limits are called out directly, while the demo remains usable."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <SpecPanel
+              title="Implemented For Demo"
+              rows={[
+                ["UI", "Landing, app routes, Global Pool, Private Clubs, Draws, Account"],
+                ["Pools", "Global Pool, Private Clubs, mock yield, draw events"],
+                ["Metadata", "Public club and draw history, invite code flow, faucet status"],
+                ["Wallet", "Sepolia wallet connection and encrypted action flow"]
+              ]}
+            />
+            <SpecPanel
+              title="To Harden"
+              rows={[
+                ["Draw kernel", "Gas-profile fully weighted FHE selection"],
+                ["Scale", "Document 50-100 member draw limit with batching strategy"],
+                ["Yield", "Replace mock yield with audited strategy adapter"],
+                ["Indexer", "Move from metadata cache to contract event sync"]
+              ]}
+            />
+          </div>
+        </LandingSection>
       </main>
       <Footer />
     </>
+  );
+}
+
+function LandingBriefCard({ item }) {
+  return (
+    <article className="bg-veil-gray-dark p-6 border-r border-b border-veil-gray-light min-h-[320px]">
+      <span className="font-label-caps text-label-caps text-veil-purple uppercase">{item.eyebrow}</span>
+      <h3 className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white uppercase mt-4">{item.title}</h3>
+      <p className="font-body-md text-body-md text-veil-white opacity-70 mt-4">{item.body}</p>
+      <div className="mt-6 flex flex-col gap-2">
+        {item.bullets.map((bullet) => (
+          <span className="font-data-sm text-data-sm text-veil-white opacity-70 uppercase" key={bullet}>
+            &gt; {bullet}
+          </span>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function LandingSection({ body, children, eyebrow, title }) {
+  return (
+    <section className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-10 border-t border-veil-gray-light pt-12">
+      <div>
+        <span className="font-label-caps text-label-caps text-veil-purple uppercase">{eyebrow}</span>
+        <h2 className="font-headline-lg text-headline-lg text-veil-white uppercase mt-4">{title}</h2>
+        <p className="font-body-md text-body-md text-veil-white opacity-70 mt-4">{body}</p>
+      </div>
+      <div>{children}</div>
+    </section>
+  );
+}
+
+function SpecPanel({ rows, title }) {
+  return (
+    <div className="border border-veil-gray-light bg-veil-black">
+      <div className="px-5 py-4 border-b border-veil-gray-light">
+        <span className="font-label-caps text-label-caps text-veil-white opacity-60 uppercase">{title}</span>
+      </div>
+      <div>
+        {rows.map(([label, value]) => (
+          <div className="grid grid-cols-[120px_1fr] gap-4 p-5 border-b last:border-b-0 border-veil-gray-light" key={label}>
+            <span className="font-label-caps text-label-caps text-veil-purple uppercase">{label}</span>
+            <span className="font-body-md text-body-md text-veil-white opacity-75">{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProcessCard({ body, index, title }) {
+  return (
+    <div className="bg-veil-gray-dark p-6 border-r border-b border-veil-gray-light min-h-[220px]">
+      <span className="font-data-sm text-data-sm text-veil-white opacity-40">{index}</span>
+      <h3 className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white uppercase mt-6">{title}</h3>
+      <p className="font-body-md text-body-md text-veil-white opacity-70 mt-4">{body}</p>
+    </div>
+  );
+}
+
+function ArchitectureCard({ body, status, title }) {
+  return (
+    <div className="bg-veil-gray-dark p-6 border-r border-b lg:border-b-0 border-veil-gray-light min-h-[260px]">
+      <h3 className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white uppercase">{title}</h3>
+      <p className="font-body-md text-body-md text-veil-white opacity-70 mt-4">{body}</p>
+      <div className="mt-8 pt-4 border-t border-veil-gray-light">
+        <span className="font-data-sm text-data-sm text-veil-white opacity-70 uppercase">&gt; {status}</span>
+      </div>
+    </div>
   );
 }
 

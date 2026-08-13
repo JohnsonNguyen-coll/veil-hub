@@ -1,0 +1,16 @@
+{
+  "name": "veil-clubs-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js",
+    "check": "node --check src/server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
+    "dotenv": "^17.2.3",
+    "viem": "^2.41.1"
+  }
+}

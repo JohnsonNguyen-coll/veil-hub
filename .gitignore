@@ -33,6 +33,8 @@ contracts/typechain-types/
 # Backend build output
 backend/dist/
 backend/.cache/
+backend/data/*.json
+!backend/data/*.example.json
 
 # Logs
 *.log
