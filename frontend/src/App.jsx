@@ -57,6 +57,15 @@ function getRouteState(pathname) {
     return { view: "landing", activePage: "dashboard" };
   }
 
+  if (pathname === "/docs") {
+    return { view: "docs", activePage: "dashboard", docsSection: null };
+  }
+
+  if (pathname.startsWith("/docs/")) {
+    const docsSection = pathname.replace("/docs/", "").split("/")[0];
+    return { view: "docs", activePage: "dashboard", docsSection };
+  }
+
   if (pathname === "/app") {
     return { view: "app", activePage: "dashboard" };
   }
@@ -284,6 +293,171 @@ const privacyRows = [
   ["Backend", "Stores only metadata and event cache; never stores decrypted values"]
 ];
 
+const docsTopics = [
+  {
+    slug: "overview",
+    eyebrow: "01 / Overview",
+    title: "What Veil Clubs Is",
+    summary: "A confidential no-loss prize pool with a public Global Pool and invite-only Private Clubs.",
+    status: "PRODUCT_BRIEF",
+    sections: [
+      {
+        title: "Core Idea",
+        body: "Veil Clubs is a social prize-savings product. Users deposit into a pool, keep the right to withdraw their principal, and compete for prizes funded by generated yield. The confidential layer changes what the public can see: deposits, balances, winnings, pool totals, and odds are treated as private financial state instead of public leaderboard data."
+      },
+      {
+        title: "Why It Exists",
+        body: "Traditional prize pools are easy to inspect but poor for privacy. Anyone can infer who is depositing, how much capital a user controls, and what their odds may be. Veil Clubs keeps the social and game-like appeal while hiding sensitive financial information."
+      },
+      {
+        title: "Product Shape",
+        body: "The product intentionally has two surfaces: a Global Pool for public onboarding and Private Clubs for small social groups. This keeps the MVP focused, demoable, and easier to reason about under confidential-computation constraints."
+      }
+    ],
+    rows: [
+      ["Primary user", "People who want no-loss prize exposure without public balance disclosure"],
+      ["Primary demo", "Join Global Pool, deposit encrypted amount, view private position, trigger draw"],
+      ["Social layer", "Create a club, share invite, run independent club draws"],
+      ["No-loss rule", "Principal can be withdrawn; prizes are funded from yield"]
+    ]
+  },
+  {
+    slug: "product-surfaces",
+    eyebrow: "02 / Product",
+    title: "Global Pool And Private Clubs",
+    summary: "The two pool types share the same confidential core but serve different user journeys.",
+    status: "SURFACES",
+    sections: [
+      {
+        title: "Global Pool",
+        body: "The Global Pool is the public entry point. It is designed for first-time users and judges because the path is short: connect wallet, deposit test token, observe countdown, trigger or watch draw events, and decrypt the user's own balance or winnings."
+      },
+      {
+        title: "Private Clubs",
+        body: "A Private Club is a smaller independent prize pool. A creator sets a name, description, minimum deposit, and draw frequency. Members join by invite code. The club can hide member identity in the interface while still preserving encrypted financial state onchain."
+      },
+      {
+        title: "Shared Behavior",
+        body: "Both surfaces use encrypted deposits, encrypted balances, confidential prize amounts, no-loss principal withdrawal, draw history, and wallet-authorized user decryption."
+      }
+    ],
+    rows: [
+      ["Global access", "Open to any wallet"],
+      ["Club access", "Invite-based membership"],
+      ["Admin role", "Club creator can trigger draws or configure keeper"],
+      ["Data model", "Public metadata plus encrypted financial handles"]
+    ]
+  },
+  {
+    slug: "user-flow",
+    eyebrow: "03 / Flow",
+    title: "User Journey",
+    summary: "A complete route from wallet connection to deposit, draw, decrypt, claim, and withdraw.",
+    status: "DEMO_PATH",
+    sections: [
+      {
+        title: "Connect And Choose Pool",
+        body: "A user connects a Sepolia wallet and chooses either the Global Pool or a Private Club. The app should make the Global Pool feel immediate and make club entry feel private, deliberate, and invite-driven."
+      },
+      {
+        title: "Encrypted Deposit",
+        body: "The user enters an amount and the client prepares encrypted input. The transaction submits the encrypted amount and proof to the pool contract. The public sees a transaction occurred, but not the plaintext deposit amount."
+      },
+      {
+        title: "Draw And Claim",
+        body: "At the scheduled time, a keeper or admin triggers a draw. The target design selects winners with encrypted weights. Prize amount remains confidential. The winner can decrypt their own claimable prize and claim it without exposing private balances."
+      },
+      {
+        title: "Exit",
+        body: "The no-loss promise is preserved by allowing principal withdrawal. Leaving a pool should not reveal a user's full historical position or exact odds."
+      }
+    ],
+    rows: userFlow.map(([label, value]) => [label, value])
+  },
+  {
+    slug: "privacy-model",
+    eyebrow: "04 / Privacy",
+    title: "Privacy Model",
+    summary: "Exactly what should remain hidden, what the user can decrypt, and what remains public.",
+    status: "DISCLOSURE_MAP",
+    sections: [
+      {
+        title: "Hidden State",
+        body: "Individual deposits, individual balances, private club totals, odds, prize amounts, and yield performance are sensitive. The interface should never display these values until the authorized user performs decryption for their own data."
+      },
+      {
+        title: "Public State",
+        body: "A confidential app still emits public structure. Pool ids, timestamps, transaction hashes, draw ids, and sometimes winner addresses may be public. The docs should be honest about this so privacy claims are precise."
+      },
+      {
+        title: "User-Only Decryption",
+        body: "A user can request wallet-authorized decryption for their own balance, winnings, and claimable amounts. The app should make this feel intentional: decrypted values are not ambient dashboard data."
+      }
+    ],
+    rows: privacyRows
+  },
+  {
+    slug: "prize-draw",
+    eyebrow: "05 / Draws",
+    title: "Confidential Prize Draw",
+    summary: "The hardest technical part: fair weighted selection using encrypted balances.",
+    status: "CORE_MECHANISM",
+    sections: [
+      {
+        title: "Goal",
+        body: "The draw should select a winner with probability proportional to their encrypted principal, without decrypting individual balances or revealing odds. This is the core technical claim of Veil Clubs and should be implemented and documented carefully."
+      },
+      {
+        title: "MVP Path",
+        body: "The MVP can expose the draw lifecycle and encrypted prize transfer while marking any demo finalization hook as non-final. This is better than pretending a shortcut is already the confidential weighted selector."
+      },
+      {
+        title: "Scalability Plan",
+        body: "For 50-100 members, the draw logic needs gas profiling. A direct cumulative scan over encrypted values may be expensive. A practical path is batching or grouping participants, then selecting within a smaller encrypted subset."
+      },
+      {
+        title: "Fairness Documentation",
+        body: "Docs should state the randomness source, how weights are computed, what is public, what remains encrypted, who can trigger a draw, and how the system prevents admin discretion from changing the winner."
+      }
+    ],
+    rows: [
+      ["Weight", "Encrypted user principal"],
+      ["Randomness", "Onchain confidential randomness target"],
+      ["Output", "Winner event plus encrypted prize handle"],
+      ["Limit", "Gas-profile before scaling beyond MVP member cap"]
+    ]
+  },
+  {
+    slug: "mvp-boundaries",
+    eyebrow: "06 / Limits",
+    title: "MVP Boundaries",
+    summary: "What is demo-ready now and what must be hardened before production claims.",
+    status: "HONEST_LIMITS",
+    sections: [
+      {
+        title: "Demo-Ready",
+        body: "The current product can demonstrate the landing page, app routes, Global Pool, Private Clubs, draw history, account dashboard, backend metadata, invite code flow, and initial confidential contract structure."
+      },
+      {
+        title: "Must Be Hardened",
+        body: "The fully weighted FHE draw kernel, production yield adapter, event indexer, keeper reliability, and contract tests need more work before this can be presented as production-ready."
+      },
+      {
+        title: "Judging Strategy",
+        body: "The best judging position is to be precise: show the product, explain the intended confidential draw design, demonstrate the parts that work, and clearly mark the remaining engineering work."
+      }
+    ],
+    rows: [
+      ["Ready", "UI, routes, metadata API, club UX, contract scaffold"],
+      ["Risk", "Weighted encrypted winner selection cost"],
+      ["Next", "Gas profiling, tests, event sync, audited yield adapter"],
+      ["Messaging", "Do not overclaim final draw fairness until kernel is complete"]
+    ]
+  }
+];
+
+const docsBySlug = Object.fromEntries(docsTopics.map((topic) => [topic.slug, topic]));
+
 function LandingPage({ goApp, goGlobal }) {
   return (
     <>
@@ -322,21 +496,6 @@ function LandingPage({ goApp, goGlobal }) {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-10 border-y border-veil-gray-light py-12">
-          <div>
-            <span className="font-label-caps text-label-caps text-veil-purple uppercase">System Overview</span>
-            <h2 className="font-headline-lg text-headline-lg text-veil-white uppercase mt-4">What Veil Clubs Is</h2>
-            <p className="font-body-md text-body-md text-veil-white opacity-70 mt-4">
-              A confidential social savings game where users keep their principal, contribute encrypted deposits to yield-producing pools, and periodically compete for encrypted prize payouts.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border border-veil-gray-light">
-            {landingBriefs.map((item) => (
-              <LandingBriefCard item={item} key={item.eyebrow} />
-            ))}
-          </div>
-        </section>
-
         <section className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-veil-gray-light">
           <FeatureCard
             borderClass="border-r border-b md:border-b-0"
@@ -359,103 +518,155 @@ function LandingPage({ goApp, goGlobal }) {
             title="Social Yield"
           />
         </section>
+      </main>
+      <Footer />
+    </>
+  );
+}
+
+function DocsPage({ docsSection, navigate }) {
+  const topic = docsBySlug[docsSection];
+
+  if (topic) {
+    return <DocsDetailPage navigate={navigate} topic={topic} />;
+  }
+
+  return (
+    <>
+      <main className="flex-grow pt-32 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full flex flex-col gap-16">
+        <section className="border-y border-veil-gray-light py-12">
+          <span className="font-label-caps text-label-caps text-veil-purple uppercase">Protocol Docs</span>
+          <h1 className="font-headline-xl text-[44px] md:text-[64px] leading-tight text-veil-white font-bold tracking-tighter uppercase mt-4">
+            Veil Clubs
+            <br />
+            Product Notes
+          </h1>
+          <p className="font-body-md text-body-md text-veil-white opacity-75 max-w-3xl text-lg mt-5">
+            Choose a topic to inspect the product, privacy model, draw mechanism, and MVP boundaries in detail.
+          </p>
+        </section>
+
+        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-0 border border-veil-gray-light">
+          {docsTopics.map((item) => (
+            <DocsTopicCard item={item} key={item.slug} navigate={navigate} />
+          ))}
+        </section>
 
         <LandingSection
-          eyebrow="Product Surfaces"
-          title="Two Entry Points, One Confidential Core"
-          body="The MVP is intentionally focused. It avoids many pool variants and instead makes the Global Pool and Private Clubs feel complete, understandable, and easy to demo."
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <SpecPanel
-              title="Global Pool"
-              rows={[
-                ["Access", "Open to every connected wallet"],
-                ["Purpose", "Fast onboarding and public demo flow"],
-                ["Privacy", "Balances and winnings stay encrypted"],
-                ["Actions", "Deposit, decrypt own balance, draw, claim, withdraw"]
-              ]}
-            />
-            <SpecPanel
-              title="Private Club"
-              rows={[
-                ["Access", "Invite code or private link"],
-                ["Purpose", "Social prize pool for trusted groups"],
-                ["Privacy", "Optional anonymous members and encrypted pool state"],
-                ["Actions", "Create club, invite, deposit, keeper draw, withdraw"]
-              ]}
-            />
-          </div>
-        </LandingSection>
-
-        <LandingSection
-          eyebrow="User Flow"
-          title="From Wallet To No-Loss Prize Draw"
-          body="The interface is designed around a simple path that judges and users can understand without reading contract code."
-        >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-veil-gray-light">
-            {userFlow.map(([title, body], index) => (
-              <ProcessCard body={body} index={String(index + 1).padStart(2, "0")} key={title} title={title} />
-            ))}
-          </div>
-        </LandingSection>
-
-        <LandingSection
-          eyebrow="Privacy Model"
-          title="What Is Hidden And What Is Public"
-          body="The project is explicit about privacy boundaries. Confidentiality is not treated as decoration; it is documented as part of the product surface."
+          eyebrow="Reading Order"
+          title="Recommended Path"
+          body="Start with the product overview, then inspect product surfaces, privacy model, and prize draw mechanics before reviewing MVP boundaries."
         >
           <div className="border border-veil-gray-light">
-            {privacyRows.map(([label, value]) => (
-              <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] border-b last:border-b-0 border-veil-gray-light" key={label}>
-                <div className="bg-veil-gray-dark p-5">
-                  <span className="font-label-caps text-label-caps text-veil-purple uppercase">{label}</span>
-                </div>
-                <div className="p-5">
-                  <span className="font-body-md text-body-md text-veil-white opacity-75">{value}</span>
-                </div>
-              </div>
+            {docsTopics.map((item, index) => (
+              <button
+                className="grid grid-cols-[64px_1fr_auto] gap-4 w-full text-left p-5 border-b last:border-b-0 border-veil-gray-light hover:bg-veil-gray-dark transition-colors"
+                key={item.slug}
+                onClick={() => navigate(`/docs/${item.slug}`)}
+                type="button"
+              >
+                <span className="font-data-sm text-data-sm text-veil-purple">{String(index + 1).padStart(2, "0")}</span>
+                <span>
+                  <span className="font-data-sm text-data-sm text-veil-white uppercase">{item.title}</span>
+                  <span className="block font-body-md text-body-md text-veil-white opacity-60 mt-1">{item.summary}</span>
+                </span>
+                <span className="material-symbols-outlined text-veil-white opacity-60">arrow_forward</span>
+              </button>
             ))}
           </div>
         </LandingSection>
+      </main>
+      <Footer />
+    </>
+  );
+}
 
-        <LandingSection
-          eyebrow="System Design"
-          title="Built For Private Pool Operations"
-          body="Veil Clubs keeps the user-facing flow simple while preserving strict boundaries around confidential balances, prize amounts, and personal performance."
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 border border-veil-gray-light">
-            <ArchitectureCard title="Private Assets" status="CONFIDENTIAL_BALANCES" body="Deposits, balances, pool totals, odds, and winnings are handled as encrypted values instead of public numbers." />
-            <ArchitectureCard title="Prize Pools" status="GLOBAL_AND_PRIVATE" body="Users can enter the open Global Pool or join smaller invite-only clubs, each with its own draw schedule and prize history." />
-            <ArchitectureCard title="Operations" status="KEEPER_READY" body="Draws, faucet access, invite codes, and public event history are organized so the demo feels reliable without exposing private data." />
-          </div>
-        </LandingSection>
+function DocsTopicCard({ item, navigate }) {
+  return (
+    <button
+      className="bg-veil-gray-dark p-6 border-r border-b border-veil-gray-light min-h-[300px] text-left hover:bg-[#242424] scramble-hover transition-all duration-300"
+      onClick={() => navigate(`/docs/${item.slug}`)}
+      type="button"
+    >
+      <span className="font-label-caps text-label-caps text-veil-purple uppercase">{item.eyebrow}</span>
+      <h2 className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white uppercase mt-5">{item.title}</h2>
+      <p className="font-body-md text-body-md text-veil-white opacity-70 mt-4">{item.summary}</p>
+      <div className="mt-8 pt-4 border-t border-veil-gray-light flex items-center justify-between gap-4">
+        <span className="font-data-sm text-data-sm text-veil-white opacity-70 uppercase">&gt; {item.status}</span>
+        <span className="material-symbols-outlined text-veil-white opacity-60">arrow_forward</span>
+      </div>
+    </button>
+  );
+}
 
-        <LandingSection
-          eyebrow="MVP Boundaries"
-          title="Current Limits Are Documented"
-          body="The project is built to be honest in judging: the draw kernel and scalability limits are called out directly, while the demo remains usable."
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <SpecPanel
-              title="Implemented For Demo"
-              rows={[
-                ["UI", "Landing, app routes, Global Pool, Private Clubs, Draws, Account"],
-                ["Pools", "Global Pool, Private Clubs, mock yield, draw events"],
-                ["Metadata", "Public club and draw history, invite code flow, faucet status"],
-                ["Wallet", "Sepolia wallet connection and encrypted action flow"]
-              ]}
-            />
-            <SpecPanel
-              title="To Harden"
-              rows={[
-                ["Draw kernel", "Gas-profile fully weighted FHE selection"],
-                ["Scale", "Document 50-100 member draw limit with batching strategy"],
-                ["Yield", "Replace mock yield with audited strategy adapter"],
-                ["Indexer", "Move from metadata cache to contract event sync"]
-              ]}
-            />
+function DocsDetailPage({ navigate, topic }) {
+  return (
+    <>
+      <main className="flex-grow pt-32 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full flex flex-col gap-12">
+        <section className="border-y border-veil-gray-light py-10">
+          <button className="font-data-sm text-data-sm text-veil-white opacity-60 hover:opacity-100 uppercase mb-8" onClick={() => navigate("/docs")} type="button">
+            &lt; Back to docs
+          </button>
+          <span className="block font-label-caps text-label-caps text-veil-purple uppercase">{topic.eyebrow}</span>
+          <h1 className="font-headline-xl text-[44px] md:text-[64px] leading-tight text-veil-white font-bold tracking-tighter uppercase mt-4">
+            {topic.title}
+          </h1>
+          <p className="font-body-md text-body-md text-veil-white opacity-75 max-w-3xl text-lg mt-5">{topic.summary}</p>
+          <div className="mt-8">
+            <span className="font-data-sm text-data-sm text-veil-white opacity-70 uppercase">&gt; {topic.status}</span>
           </div>
-        </LandingSection>
+        </section>
+
+        <section className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-10">
+          <aside className="lg:sticky lg:top-28 h-fit border border-veil-gray-light">
+            <div className="px-5 py-4 border-b border-veil-gray-light">
+              <span className="font-label-caps text-label-caps text-veil-white opacity-60 uppercase">Docs Index</span>
+            </div>
+            {docsTopics.map((item) => (
+              <button
+                className={`w-full text-left px-5 py-4 border-b last:border-b-0 border-veil-gray-light transition-colors ${
+                  item.slug === topic.slug ? "bg-veil-purple text-veil-white" : "text-veil-white opacity-70 hover:opacity-100 hover:bg-veil-gray-dark"
+                }`}
+                key={item.slug}
+                onClick={() => navigate(`/docs/${item.slug}`)}
+                type="button"
+              >
+                <span className="font-label-caps text-label-caps uppercase">{item.title}</span>
+              </button>
+            ))}
+          </aside>
+
+          <article className="flex flex-col gap-8">
+            {topic.sections.map((section, index) => (
+              <section className="border border-veil-gray-light bg-veil-black" key={section.title}>
+                <div className="grid grid-cols-1 md:grid-cols-[96px_1fr] border-b border-veil-gray-light">
+                  <div className="bg-veil-gray-dark p-5">
+                    <span className="font-data-sm text-data-sm text-veil-purple">{String(index + 1).padStart(2, "0")}</span>
+                  </div>
+                  <div className="p-5">
+                    <h2 className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white uppercase">{section.title}</h2>
+                  </div>
+                </div>
+                <div className="p-6 md:p-8">
+                  <p className="font-body-md text-body-md text-veil-white opacity-75 text-lg leading-8">{section.body}</p>
+                </div>
+              </section>
+            ))}
+
+            <SpecPanel rows={topic.rows} title="Reference Notes" />
+
+            <section className="border border-veil-gray-light bg-veil-gray-dark p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <span className="font-label-caps text-label-caps text-veil-purple uppercase">Next Step</span>
+                <p className="font-body-md text-body-md text-veil-white opacity-75 mt-2">Continue reading another section or launch the application workspace.</p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <VeilButton onClick={() => navigate("/docs")} variant="secondary">Docs Index</VeilButton>
+                <VeilButton onClick={() => navigate(APP_ROUTES.dashboard)}>Launch App</VeilButton>
+              </div>
+            </section>
+          </article>
+        </section>
       </main>
       <Footer />
     </>
@@ -952,7 +1163,7 @@ function PrivacyList() {
 
 export default function App() {
   const [route, setRoute] = useState(() => getRouteState(window.location.pathname));
-  const { view, activePage } = route;
+  const { view, activePage, docsSection } = route;
 
   useEffect(() => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
@@ -1028,7 +1239,7 @@ export default function App() {
 
   return (
     <div className="text-on-background min-h-screen flex flex-col relative overflow-x-hidden bg-veil-black">
-      {view === "landing" ? (
+      {view === "landing" || view === "docs" ? (
         <LandingHeader navigate={navigate} />
       ) : (
         <AppHeader activePage={activePage} navigate={navigate} navigatePage={navigatePage} />
@@ -1036,6 +1247,8 @@ export default function App() {
 
       {view === "landing" ? (
         <LandingPage goApp={() => goApp("dashboard")} goGlobal={() => goApp("global")} />
+      ) : view === "docs" ? (
+        <DocsPage docsSection={docsSection} navigate={navigate} />
       ) : (
         <>
           <AppWorkspace activePage={activePage} navigatePage={navigatePage} />
@@ -1060,6 +1273,9 @@ function LandingHeader({ navigate }) {
           </button>
           <button className="font-body-md text-body-md text-veil-white opacity-70 hover:opacity-100 transition-opacity duration-300 pb-1" onClick={() => navigate(APP_ROUTES.dashboard)} type="button">
             Dashboard
+          </button>
+          <button className="font-body-md text-body-md text-veil-white opacity-70 hover:opacity-100 transition-opacity duration-300 pb-1" onClick={() => navigate("/docs")} type="button">
+            Docs
           </button>
         </div>
         <ConnectWalletButton />
