@@ -55,9 +55,8 @@ if (errors.some((error) => error.severity === "error")) {
   process.exit(1);
 }
 
-if (process.env.WRITE_SOLC_ARTIFACTS === "true") {
-  fs.mkdirSync(path.join(root, "artifacts-solc"), { recursive: true });
-  fs.writeFileSync(path.join(root, "artifacts-solc", "compile-output.json"), JSON.stringify(output, null, 2));
-}
+fs.mkdirSync(path.join(root, "artifacts-solc"), { recursive: true });
+fs.writeFileSync(path.join(root, "artifacts-solc", "compile-output.json"), JSON.stringify(output, null, 2));
 
 console.log(`Compiled ${Object.keys(output.contracts || {}).length} source groups with solc ${solc.version()}`);
+

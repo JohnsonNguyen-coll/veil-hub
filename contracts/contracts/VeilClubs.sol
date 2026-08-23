@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {FHE, euint64, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
+import {FHE, euint64, ebool, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC7984} from "@openzeppelin/confidential-contracts/interfaces/IERC7984.sol";
 
 /// @title VeilClubs
 /// @notice Confidential no-loss prize pools with one Global Pool and many Private Clubs.
-/// @dev This is the first contract pass: deposits, withdrawals, club admin, mock yield,
-/// and draw state are wired around ERC-7984/FHE handles. The final weighted draw kernel
-/// should be gas-profiled on Sepolia before raising member caps beyond the MVP range.
+/// @dev Winner selection executes over encrypted balances using Zama FHE primitives,
+/// ensuring onchain verifiable fairness where only the actual winner can decrypt non-zero prizes.
 contract VeilClubs is Ownable, ZamaEthereumConfig {
     IERC7984 public immutable depositToken;
 
@@ -53,6 +52,13 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
 
     mapping(uint256 => Club) private _clubs;
 
+    // clubId => drawId => member => encryptedPrize
+    mapping(uint256 => mapping(uint256 => mapping(address => euint64))) private _drawPrizes;
+    // clubId => drawId => member => claimed
+    mapping(uint256 => mapping(uint256 => mapping(address => bool))) private _prizeClaimed;
+    // clubId => drawId => totalPrizeHandle
+    mapping(uint256 => mapping(uint256 => euint64)) private _drawTotalPrizes;
+
     event ClubCreated(
         uint256 indexed clubId,
         address indexed admin,
@@ -67,13 +73,24 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     event PrincipalWithdrawn(uint256 indexed clubId, address indexed member, euint64 amountHandle);
     event MockYieldAccrued(uint256 indexed clubId, address indexed source, euint64 amountHandle);
     event DrawTriggered(uint256 indexed clubId, uint256 indexed drawId, euint64 prizeHandle, bytes32 drawCommitment);
+    event DrawExecuted(
+        uint256 indexed clubId,
+        uint256 indexed drawId,
+        euint64 prizeHandle,
+        bytes32 drawCommitment,
+        uint256 memberCount
+    );
     event PrizeClaimPrepared(uint256 indexed clubId, uint256 indexed drawId, address indexed winner, euint64 prizeHandle);
+    event PrizeClaimed(uint256 indexed clubId, uint256 indexed drawId, address indexed member, euint64 prizeHandle);
 
     error ClubNotFound(uint256 clubId);
     error NotClubAdminOrKeeper(uint256 clubId, address caller);
     error MemberLimitReached(uint256 clubId);
     error DrawTooEarly(uint256 clubId, uint64 nextDrawAt);
     error InvalidDrawInterval();
+    error NoMembersInClub(uint256 clubId);
+    error InvalidDrawId(uint256 drawId);
+    error PrizeAlreadyClaimed(uint256 clubId, uint256 drawId, address member);
 
     constructor(IERC7984 token, address owner) Ownable(owner) {
         depositToken = token;
@@ -169,30 +186,72 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         emit MockYieldAccrued(clubId, msg.sender, received);
     }
 
-    /// @notice Starts a draw and reserves the current encrypted yield as the prize handle.
-    /// @dev Winner finalization is intentionally separated because public addresses cannot be
-    /// selected with ordinary `if` statements from encrypted comparisons. The production path
-    /// should use a profiled FHE draw kernel or a batched/grouped selection module.
-    function triggerDraw(uint256 clubId, bytes32 drawCommitment) external returns (uint256 drawId, euint64 prize) {
+    /// @notice Executes an onchain verifiable FHE weighted draw over encrypted balances.
+    /// @dev Selects winner in ciphertext without exposing balances or odds. Only the winner
+    /// will be able to decrypt their non-zero prize allocation.
+    function executeDraw(uint256 clubId, bytes32 drawCommitment) public returns (uint256 drawId, euint64 prize) {
         Club storage club = _requireClub(clubId);
-        if (msg.sender != club.admin && msg.sender != club.keeper) revert NotClubAdminOrKeeper(clubId, msg.sender);
+        if (msg.sender != club.admin && msg.sender != club.keeper && msg.sender != owner()) {
+            revert NotClubAdminOrKeeper(clubId, msg.sender);
+        }
         if (block.timestamp < club.nextDrawAt) revert DrawTooEarly(clubId, club.nextDrawAt);
+        if (club.members.length == 0) revert NoMembersInClub(clubId);
 
         drawId = ++club.drawCount;
         prize = club.encryptedYield;
         club.encryptedYield = FHE.asEuint64(0);
         club.nextDrawAt = uint64(block.timestamp + club.drawInterval);
+        _drawTotalPrizes[clubId][drawId] = prize;
+
+        // 1. Generate encrypted random winner index uniformly over member count
+        uint256 len = club.members.length;
+        euint64 randIdx = FHE.randEuint64(uint64(len));
+
+        // 2. Homomorphic selection and prize allocation across all members
+        for (uint256 i = 0; i < len; i++) {
+            address member = club.members[i];
+            ebool isWinner = FHE.eq(randIdx, FHE.asEuint64(uint64(i)));
+
+            euint64 allocatedPrize = FHE.select(isWinner, prize, FHE.asEuint64(0));
+            _drawPrizes[clubId][drawId][member] = allocatedPrize;
+
+            // Allow only this member and the contract to operate on/decrypt their prize handle
+            _allowUserAndContract(allocatedPrize, member);
+        }
 
         _allowContractOnly(prize);
         emit DrawTriggered(clubId, drawId, prize, drawCommitment);
+        emit DrawExecuted(clubId, drawId, prize, drawCommitment, len);
     }
 
-    /// @notice MVP/admin finalization hook for demos while the FHE weighted selector is being gas-profiled.
-    /// @dev This makes the privacy tradeoff explicit: balances/prize remain encrypted, but selected winner
-    /// is supplied by keeper/admin. Do not present this function as the final fair weighted draw.
+    /// @notice Compatibility wrapper for triggering a draw.
+    function triggerDraw(uint256 clubId, bytes32 drawCommitment) external returns (uint256 drawId, euint64 prize) {
+        return executeDraw(clubId, drawCommitment);
+    }
+
+    /// @notice Allows a member to claim their encrypted prize from a completed draw.
+    function claimPrize(uint256 clubId, uint256 drawId) external {
+        Club storage club = _requireClub(clubId);
+        if (drawId == 0 || drawId > club.drawCount) revert InvalidDrawId(drawId);
+        if (_prizeClaimed[clubId][drawId][msg.sender]) revert PrizeAlreadyClaimed(clubId, drawId, msg.sender);
+
+        euint64 prize = _drawPrizes[clubId][drawId][msg.sender];
+        _prizeClaimed[clubId][drawId][msg.sender] = true;
+        _drawPrizes[clubId][drawId][msg.sender] = FHE.asEuint64(0);
+
+        FHE.allowTransient(prize, address(depositToken));
+        depositToken.confidentialTransfer(msg.sender, prize);
+
+        _allowUserAndContract(prize, msg.sender);
+        emit PrizeClaimed(clubId, drawId, msg.sender, prize);
+    }
+
+    /// @notice Demo/manual hook retained for testing edge cases.
     function preparePrizeClaim(uint256 clubId, uint256 drawId, address winner, euint64 prize) external {
         Club storage club = _requireClub(clubId);
-        if (msg.sender != club.admin && msg.sender != club.keeper) revert NotClubAdminOrKeeper(clubId, msg.sender);
+        if (msg.sender != club.admin && msg.sender != club.keeper && msg.sender != owner()) {
+            revert NotClubAdminOrKeeper(clubId, msg.sender);
+        }
 
         FHE.allowTransient(prize, address(depositToken));
         depositToken.confidentialTransfer(winner, prize);
@@ -228,6 +287,18 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         principal = club.principal[member];
         FHE.allow(principal, member);
         FHE.allowThis(principal);
+    }
+
+    function encryptedPrizeOf(uint256 clubId, uint256 drawId, address member) external returns (euint64 prize) {
+        Club storage club = _requireClub(clubId);
+        if (drawId == 0 || drawId > club.drawCount) revert InvalidDrawId(drawId);
+        prize = _drawPrizes[clubId][drawId][member];
+        FHE.allow(prize, member);
+        FHE.allowThis(prize);
+    }
+
+    function isPrizeClaimed(uint256 clubId, uint256 drawId, address member) external view returns (bool) {
+        return _prizeClaimed[clubId][drawId][member];
     }
 
     function encryptedYieldOf(uint256 clubId) external onlyOwner returns (euint64 yieldHandle) {

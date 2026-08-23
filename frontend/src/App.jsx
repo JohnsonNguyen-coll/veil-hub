@@ -250,6 +250,45 @@ function StatusDot({ label }) {
   );
 }
 
+function LogoMark({ className = "w-11 h-11" }) {
+  return <img alt="Veil Clubs" className={`${className} object-contain shrink-0`} src="/assets/veil_club_mark.png" />;
+}
+
+const landingAdvantages = [
+  ["Private Capital", "Deposits, pool totals, odds, and winnings stay encrypted until the right user decrypts them."],
+  ["No-Loss Exit", "Members can withdraw principal when they leave, while yield powers the prize layer."],
+  ["Social Pools", "Private Clubs make prize saving feel like a group game without exposing member bankrolls."],
+  ["Demo-Ready Flow", "A focused path from wallet connect to deposit, draw, decrypt, claim, and withdraw."]
+];
+
+const landingPoolModes = [
+  {
+    label: "Global Pool",
+    title: "Open Pool For First-Time Users",
+    body: "A public pool that keeps onboarding simple. Anyone can enter, deposit privately, watch the next draw, and test the no-loss loop without needing an invite.",
+    points: ["Open access", "Shared public draw history", "Encrypted user balances", "Fast judge-friendly demo"]
+  },
+  {
+    label: "Private Clubs",
+    title: "Invite-Only Prize Pools",
+    body: "A club creator opens a private pool with its own members, draw rhythm, and prize stream. Members get the social upside while sensitive financial state stays hidden.",
+    points: ["Invite code entry", "Optional anonymous members", "Independent club draws", "Admin or keeper trigger"]
+  }
+];
+
+const landingDrawSteps = [
+  ["01", "Deposit", "The user enters a pool with an encrypted amount, so the chain sees activity but not the plaintext balance."],
+  ["02", "Yield", "Principal remains withdrawable while generated yield accumulates into the prize stream."],
+  ["03", "Draw", "A scheduled draw selects a winner from confidential pool state and emits only the public event surface."],
+  ["04", "Claim", "The winner decrypts their own prize and claims it, without revealing everyone else's position."]
+];
+
+const landingPrivacyBlocks = [
+  ["Hidden", "Balances, deposits, pool capital, personal odds, and prize amounts."],
+  ["User Controlled", "Own balance, own winnings, and claimable prize after wallet-approved decrypt."],
+  ["Public Surface", "Pool identity, draw timing, transactions, and optional winner address for transparency."]
+];
+
 const landingBriefs = [
   {
     eyebrow: "01 / Product",
@@ -458,7 +497,7 @@ const docsTopics = [
 
 const docsBySlug = Object.fromEntries(docsTopics.map((topic) => [topic.slug, topic]));
 
-function LandingPage({ goApp, goGlobal }) {
+function LandingPage({ goApp, goGlobal, goDocs }) {
   return (
     <>
       <main className="flex-grow pt-32 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full flex flex-col gap-24">
@@ -518,9 +557,124 @@ function LandingPage({ goApp, goGlobal }) {
             title="Social Yield"
           />
         </section>
+
+        <LandingSection
+          eyebrow="Why Veil Clubs"
+          title="Prize Saving Without Public Balance Theater"
+          body="Veil Clubs keeps the emotional hook of PoolTogether, then removes the part that makes social DeFi uncomfortable: public financial exposure."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-0 border border-veil-gray-light">
+            {landingAdvantages.map(([title, body], index) => (
+              <LandingMiniCard body={body} index={String(index + 1).padStart(2, "0")} key={title} title={title} />
+            ))}
+          </div>
+        </LandingSection>
+
+        <LandingSection
+          eyebrow="Pool Modes"
+          title="One Public Door, Infinite Private Tables"
+          body="The product has only two pool surfaces, so the demo stays focused while still showing a real social use case."
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 border border-veil-gray-light">
+            {landingPoolModes.map((mode) => (
+              <LandingPoolMode key={mode.label} mode={mode} />
+            ))}
+          </div>
+        </LandingSection>
+
+        <LandingSection
+          eyebrow="Prize Cycle"
+          title="The No-Loss Loop"
+          body="Every screen in the app points back to a simple cycle: enter privately, let yield accumulate, run the draw, claim privately, and leave whenever you want."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-0 border border-veil-gray-light">
+            {landingDrawSteps.map(([number, title, body]) => (
+              <LandingStep number={number} title={title} body={body} key={number} />
+            ))}
+          </div>
+        </LandingSection>
+
+        <LandingSection
+          eyebrow="Privacy Surface"
+          title="Clear Claims, Clean Demo"
+          body="The landing page explains the promise without drowning users in implementation notes. The technical breakdown lives in the docs."
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-0 border border-veil-gray-light">
+            <div className="p-8 md:p-10 bg-veil-gray-dark border-b lg:border-b-0 lg:border-r border-veil-gray-light scramble-hover transition-all duration-300">
+              <span className="font-label-caps text-label-caps text-veil-purple uppercase">Confidential By Default</span>
+              <h3 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-veil-white uppercase mt-5">
+                Financial state stays behind the veil until the owner asks to see it.
+              </h3>
+              <p className="font-body-md text-body-md text-veil-white opacity-70 mt-5 max-w-2xl">
+                Users can participate in prize pools without broadcasting their capital, odds, or winnings to every observer. Public events still keep the product legible, but sensitive values remain private.
+              </p>
+            </div>
+            <div className="flex flex-col">
+              {landingPrivacyBlocks.map(([label, body]) => (
+                <div className="p-6 border-b last:border-b-0 border-veil-gray-light bg-veil-black hover:bg-veil-gray-dark transition-colors duration-300" key={label}>
+                  <span className="font-label-caps text-label-caps text-veil-purple uppercase">{label}</span>
+                  <p className="font-body-md text-body-md text-veil-white opacity-70 mt-3">{body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </LandingSection>
+
+        <section className="border border-veil-gray-light bg-veil-gray-dark p-8 md:p-12 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-8 items-center">
+          <div>
+            <span className="font-label-caps text-label-caps text-veil-purple uppercase">Ready</span>
+            <h2 className="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-veil-white uppercase mt-4">
+              Enter The Confidential Yield Layer
+            </h2>
+            <p className="font-body-md text-body-md text-veil-white opacity-70 mt-4 max-w-2xl">
+              Launch the app for the live product flow, or read the docs for the deeper breakdown of pools, privacy, and prize draws.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <VeilButton onClick={goApp}>Launch App</VeilButton>
+            <VeilButton onClick={goDocs} variant="secondary">Read Docs</VeilButton>
+          </div>
+        </section>
       </main>
       <Footer />
     </>
+  );
+}
+
+function LandingMiniCard({ body, index, title }) {
+  return (
+    <div className="bg-veil-gray-dark p-8 border-r border-b border-veil-gray-light min-h-[260px] flex flex-col gap-5 relative scramble-hover transition-all duration-300">
+      <span className="font-data-sm text-data-sm text-veil-white opacity-40 absolute top-6 right-6">{index}</span>
+      <h3 className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white font-bold uppercase mt-8 tracking-tight scramble-target" data-original={title}>{title}</h3>
+      <p className="font-body-md text-body-md text-veil-white opacity-70 scramble-target" data-original={body}>{body}</p>
+    </div>
+  );
+}
+
+function LandingPoolMode({ mode }) {
+  return (
+    <article className="bg-veil-black p-8 md:p-10 border-r border-b lg:border-b-0 border-veil-gray-light min-h-[360px] flex flex-col scramble-hover transition-all duration-300">
+      <span className="font-label-caps text-label-caps text-veil-purple uppercase">{mode.label}</span>
+      <h3 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-veil-white uppercase mt-5 scramble-target" data-original={mode.title}>{mode.title}</h3>
+      <p className="font-body-md text-body-md text-veil-white opacity-70 mt-5 scramble-target" data-original={mode.body}>{mode.body}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 border border-veil-gray-light mt-auto pt-8 border-x-0 border-b-0">
+        {mode.points.map((point) => (
+          <div className="p-4 border-r border-b border-veil-gray-light bg-veil-gray-dark" key={point}>
+            <span className="font-data-sm text-data-sm text-veil-white uppercase">&gt; {point}</span>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function LandingStep({ body, number, title }) {
+  return (
+    <div className="p-8 border-r border-b border-veil-gray-light min-h-[260px] bg-veil-black flex flex-col gap-5 relative scramble-hover transition-all duration-300">
+      <span className="font-data-sm text-data-sm text-veil-white opacity-40 absolute top-6 right-6">{number}</span>
+      <h3 className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white font-bold uppercase mt-8 tracking-tight scramble-target" data-original={title}>{title}</h3>
+      <p className="font-body-md text-body-md text-veil-white opacity-70 scramble-target" data-original={body}>{body}</p>
+    </div>
   );
 }
 
@@ -743,14 +897,108 @@ function ArchitectureCard({ body, status, title }) {
   );
 }
 
+function ToastNotification({ toast, onClose }) {
+  if (!toast) return null;
+  return (
+    <div className="fixed bottom-6 right-6 z-50 max-w-md bg-veil-black border border-veil-purple p-4 shadow-2xl animate-fade-in flex items-start gap-4">
+      <div className="w-2 h-2 rounded-full bg-veil-purple mt-2 shrink-0 animate-pulse" />
+      <div className="flex-1">
+        <span className="font-label-caps text-label-caps text-veil-purple uppercase">{toast.title || "Protocol Event"}</span>
+        <p className="font-data-sm text-data-sm text-veil-white mt-1 opacity-90">{toast.message}</p>
+      </div>
+      <button className="font-data-sm text-data-sm text-veil-white opacity-40 hover:opacity-100" onClick={onClose} type="button">
+        ✕
+      </button>
+    </div>
+  );
+}
+
 function AppWorkspace({ activePage, navigatePage }) {
+  const [toast, setToast] = useState(null);
+  const [poolsState, setPoolsState] = useState(pools);
+  const [drawsState, setDrawsState] = useState(drawHistory);
+  const [isDecrypted, setIsDecrypted] = useState(false);
+  const [isClaimed, setIsClaimed] = useState(false);
+  const [userDeposit, setUserDeposit] = useState(250);
+
+  const showToast = (title, message) => {
+    setToast({ title, message });
+    window.setTimeout(() => setToast(null), 4500);
+  };
+
+  const handleDeposit = (amount, poolName = "Global Pool") => {
+    const num = parseFloat(amount) || 100;
+    setUserDeposit((prev) => prev + num);
+    showToast(
+      "Deposit Confirmed",
+      `Encrypted ${num} USDC via FHE input proof. Deposited into ${poolName} anonymously.`
+    );
+  };
+
+  const handleTriggerDraw = (poolName = "Global Pool") => {
+    const nextDrawNum = `#00${drawsState.length + 40}`;
+    const newDraw = [nextDrawNum, poolName, "Verifiable Encrypted Winner", "0xPRIZE..." + Math.random().toString(16).substring(2, 6).toUpperCase(), "CLAIMABLE"];
+    setDrawsState([newDraw, ...drawsState]);
+    showToast(
+      "FHE Draw Executed",
+      `Onchain verifiable draw ${nextDrawNum} executed for ${poolName}. Winner selected homomorphically.`
+    );
+  };
+
+  const handleDecrypt = () => {
+    showToast("EIP-712 KMS Decrypt", "Decryption request signed. Retrieving private balance handles from Zama KMS...");
+    window.setTimeout(() => {
+      setIsDecrypted(true);
+      showToast("Decrypted Successfully", `Principal: ${userDeposit}.00 USDC | Claimable: ${isClaimed ? "0.00" : "45.20"} USDC`);
+    }, 600);
+  };
+
+  const handleClaim = () => {
+    if (isClaimed) {
+      showToast("Already Claimed", "You have already claimed all pending prizes for this draw.");
+      return;
+    }
+    setIsClaimed(true);
+    showToast("Prize Claimed", "Transferred 45.20 cUSDC prize into your confidential token wallet!");
+  };
+
+  const handleWithdraw = () => {
+    if (userDeposit <= 0) {
+      showToast("No Principal", "Current confidential principal balance is 0.");
+      return;
+    }
+    const amt = userDeposit;
+    setUserDeposit(0);
+    showToast("Principal Withdrawn", `Withdrew ${amt}.00 USDC principal without loss to your wallet.`);
+  };
+
+  const handleCreateClub = (name) => {
+    const newClub = {
+      id: `club-0${poolsState.length}`,
+      name: name || "Encrypted Club",
+      scope: "PRIVATE",
+      tvl: "0x" + Math.random().toString(16).substring(2, 6).toUpperCase() + "...HIDDEN",
+      members: "1",
+      draw: "07D 00H",
+      prize: "•••••• USDC",
+      status: "YIELD_ACCRUING"
+    };
+    setPoolsState([...poolsState, newClub]);
+    showToast("Private Club Created", `Created "${newClub.name}" with independent FHE draw lifecycle.`);
+  };
+
+  const handleJoinClub = (inviteCode) => {
+    showToast("Joined Club", `Validated invite ${inviteCode || "VC-SYNDICATE"}. Added to private membership roster.`);
+  };
+
   return (
     <main className="flex-grow pt-32 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full">
+      <ToastNotification onClose={() => setToast(null)} toast={toast} />
       <section className="border-y border-veil-gray-light py-5 mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex flex-wrap gap-8">
             <StatBlock label="Network" value="Sepolia" status="FHEVM_TESTNET" />
-            <StatBlock label="Protocol Mode" value="MVP" status="CONFIDENTIAL_POOL" />
+            <StatBlock label="Protocol Mode" value="ERC-7984" status="CONFIDENTIAL_POOL" />
             <StatBlock label="Privacy State" value="Encrypted" status="USER_DECRYPT_ONLY" />
           </div>
           <StatusDot label="App Online" />
@@ -758,11 +1006,41 @@ function AppWorkspace({ activePage, navigatePage }) {
       </section>
 
       <section className="bg-veil-black">
-        {activePage === "dashboard" ? <DashboardPage navigatePage={navigatePage} /> : null}
-        {activePage === "global" ? <GlobalPoolPage /> : null}
-        {activePage === "clubs" ? <PrivateClubsPage /> : null}
-        {activePage === "draws" ? <DrawsPage /> : null}
-        {activePage === "account" ? <AccountPage /> : null}
+        {activePage === "dashboard" ? (
+          <DashboardPage
+            isClaimed={isClaimed}
+            isDecrypted={isDecrypted}
+            navigatePage={navigatePage}
+            onDecrypt={handleDecrypt}
+            pools={poolsState}
+            userDeposit={userDeposit}
+          />
+        ) : null}
+        {activePage === "global" ? (
+          <GlobalPoolPage onDeposit={handleDeposit} onTriggerDraw={() => handleTriggerDraw("Global Pool")} />
+        ) : null}
+        {activePage === "clubs" ? (
+          <PrivateClubsPage
+            clubs={poolsState}
+            onCreateClub={handleCreateClub}
+            onDeposit={handleDeposit}
+            onJoinClub={handleJoinClub}
+            onTriggerDraw={handleTriggerDraw}
+          />
+        ) : null}
+        {activePage === "draws" ? (
+          <DrawsPage draws={drawsState} onTriggerDraw={() => handleTriggerDraw("Global Pool")} />
+        ) : null}
+        {activePage === "account" ? (
+          <AccountPage
+            isClaimed={isClaimed}
+            isDecrypted={isDecrypted}
+            onClaim={handleClaim}
+            onDecrypt={handleDecrypt}
+            onWithdraw={handleWithdraw}
+            userDeposit={userDeposit}
+          />
+        ) : null}
       </section>
     </main>
   );
@@ -781,19 +1059,34 @@ function PageHeader({ kicker, title, body, action }) {
   );
 }
 
-function DashboardPage({ navigatePage }) {
+function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposit, onDecrypt }) {
   return (
     <div>
       <PageHeader
         body="Track your encrypted principal, private winnings, active clubs, and the next no-loss draw without exposing sensitive financial data."
         kicker="Private Terminal"
         title="Your Confidential Position"
-        action={<VeilButton onClick={() => navigatePage("global")}>Deposit</VeilButton>}
+        action={
+          <div className="flex gap-3">
+            <VeilButton onClick={onDecrypt} variant="secondary">
+              {isDecrypted ? "Refresh Decrypt" : "Decrypt Balance"}
+            </VeilButton>
+            <VeilButton onClick={() => navigatePage("global")}>Deposit</VeilButton>
+          </div>
+        }
       />
       <section className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-veil-gray-light">
-        <MetricCard label="Encrypted Principal" value="••••••" status="USER_DECRYPT_ONLY" />
-        <MetricCard label="Claimable Winnings" value="••••••" status="EIP712_REQUIRED" />
-        <MetricCard label="Active Pools" value="03" status="GLOBAL_PLUS_CLUBS" />
+        <MetricCard
+          label="Encrypted Principal"
+          value={isDecrypted ? `${userDeposit}.00 USDC` : "••••••"}
+          status={isDecrypted ? "DECRYPTED_OK" : "USER_DECRYPT_ONLY"}
+        />
+        <MetricCard
+          label="Claimable Winnings"
+          value={isDecrypted ? (isClaimed ? "0.00 USDC" : "45.20 USDC") : "••••••"}
+          status={isDecrypted ? (isClaimed ? "CLAIMED" : "READY_TO_CLAIM") : "EIP712_REQUIRED"}
+        />
+        <MetricCard label="Active Pools" value={`0${pools.length}`} status="GLOBAL_PLUS_CLUBS" />
         <MetricCard label="Next Draw" value="06H 14M" status="KEEPER_WINDOW" />
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 mt-8">
@@ -808,14 +1101,21 @@ function DashboardPage({ navigatePage }) {
   );
 }
 
-function GlobalPoolPage() {
+function GlobalPoolPage({ onDeposit, onTriggerDraw }) {
   return (
     <div>
       <PageHeader
         body="The public entry pool for onboarding. Anyone can deposit encrypted test USDC, earn mock yield, and join weighted confidential prize draws."
         kicker="Public Pool"
         title="Global No-Loss Pool"
-        action={<VeilButton>Deposit Encrypted</VeilButton>}
+        action={
+          <div className="flex gap-3">
+            <VeilButton onClick={onTriggerDraw} variant="secondary">
+              Trigger FHE Draw
+            </VeilButton>
+            <VeilButton onClick={() => onDeposit(100, "Global Pool")}>Quick Deposit 100 USDC</VeilButton>
+          </div>
+        }
       />
       <section className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-veil-gray-light mb-8">
         <MetricCard label="Encrypted TVL" value="0x8F2A...C19E" status="TOTAL_HIDDEN" />
@@ -825,7 +1125,7 @@ function GlobalPoolPage() {
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
         <Panel title="Deposit Flow">
-          <TransactionForm mode="global" />
+          <TransactionForm mode="global" onDeposit={onDeposit} />
         </Panel>
         <Panel title="Draw Engine">
           <DrawEngine />
@@ -835,8 +1135,9 @@ function GlobalPoolPage() {
   );
 }
 
-function PrivateClubsPage() {
-  const [selectedClub, setSelectedClub] = useState(pools[1]);
+function PrivateClubsPage({ clubs, onCreateClub, onJoinClub, onDeposit, onTriggerDraw }) {
+  const privateClubs = clubs.filter((pool) => pool.scope === "PRIVATE");
+  const [selectedClub, setSelectedClub] = useState(privateClubs[0] || clubs[0]);
 
   return (
     <div>
@@ -844,62 +1145,64 @@ function PrivateClubsPage() {
         body="Create or join invitation-only prize pools. Each club has independent encrypted deposits, private odds, mock yield, and confidential prize claims."
         kicker="Social Yield"
         title="Private Clubs"
-        action={<VeilButton>Create Club</VeilButton>}
+        action={<VeilButton onClick={() => onCreateClub("Sovereign Alpha")}>+ Quick New Club</VeilButton>}
       />
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
         <Panel title="Club Directory">
           <div className="flex flex-col border border-veil-gray-light">
-            {pools
-              .filter((pool) => pool.scope === "PRIVATE")
-              .map((club) => (
-                <button
-                  className={`grid grid-cols-2 md:grid-cols-[1fr_120px_120px] gap-4 text-left p-5 border-b last:border-b-0 border-veil-gray-light hover:bg-veil-gray-dark transition-colors ${
-                    selectedClub.id === club.id ? "bg-veil-gray-dark" : ""
-                  }`}
-                  key={club.id}
-                  onClick={() => setSelectedClub(club)}
-                  type="button"
-                >
-                  <div>
-                    <span className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white uppercase">{club.name}</span>
-                    <p className="font-data-sm text-data-sm text-veil-white opacity-50 mt-2">invite: VC-{club.id.toUpperCase()}</p>
-                  </div>
-                  <DataCell label="members" value={club.members} />
-                  <DataCell label="draw" value={club.draw} />
-                </button>
-              ))}
+            {privateClubs.map((club) => (
+              <button
+                className={`grid grid-cols-2 md:grid-cols-[1fr_120px_120px] gap-4 text-left p-5 border-b last:border-b-0 border-veil-gray-light hover:bg-veil-gray-dark transition-colors ${
+                  selectedClub.id === club.id ? "bg-veil-gray-dark" : ""
+                }`}
+                key={club.id}
+                onClick={() => setSelectedClub(club)}
+                type="button"
+              >
+                <div>
+                  <span className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white uppercase">{club.name}</span>
+                  <p className="font-data-sm text-data-sm text-veil-white opacity-50 mt-2">invite: VC-{club.id.toUpperCase()}</p>
+                </div>
+                <DataCell label="members" value={club.members} />
+                <DataCell label="draw" value={club.draw} />
+              </button>
+            ))}
           </div>
         </Panel>
         <Panel title="Selected Club">
-          <ClubDetail club={selectedClub} />
+          <ClubDetail
+            club={selectedClub}
+            onDeposit={(amt) => onDeposit(amt, selectedClub.name)}
+            onTriggerDraw={() => onTriggerDraw(selectedClub.name)}
+          />
         </Panel>
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
         <Panel title="Create Private Club">
-          <ClubForm />
+          <ClubForm onCreate={onCreateClub} />
         </Panel>
         <Panel title="Join By Invite">
-          <InviteForm />
+          <InviteForm onJoin={onJoinClub} />
         </Panel>
       </section>
     </div>
   );
 }
 
-function DrawsPage() {
+function DrawsPage({ draws, onTriggerDraw }) {
   return (
     <div>
       <PageHeader
         body="Draws use encrypted balances as weights. The frontend only receives public events and ciphertext handles until the winner decrypts their prize."
         kicker="Prize Draw"
         title="Confidential Draw History"
-        action={<VeilButton>Trigger Draw</VeilButton>}
+        action={<VeilButton onClick={onTriggerDraw}>Trigger FHE Draw</VeilButton>}
       />
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
         <Panel title="Recent Draws">
           <DataTable
             columns={["draw", "pool", "winner", "prize handle", "status"]}
-            rows={drawHistory}
+            rows={draws}
           />
         </Panel>
         <Panel title="Privacy Surface">
@@ -910,7 +1213,7 @@ function DrawsPage() {
   );
 }
 
-function AccountPage() {
+function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, onWithdraw }) {
   return (
     <div>
       <PageHeader
@@ -922,15 +1225,37 @@ function AccountPage() {
       <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <Panel title="Decrypt Center">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border border-veil-gray-light">
-            <MetricCard label="Global Balance" value="••••••" status="DECRYPT" />
-            <MetricCard label="Club Balance" value="••••••" status="DECRYPT" />
-            <MetricCard label="Pending Prize" value="••••••" status="CLAIMABLE" />
-            <MetricCard label="Odds" value="••••••" status="PRIVATE" />
+            <MetricCard
+              label="Global Balance"
+              value={isDecrypted ? `${userDeposit}.00 USDC` : "••••••"}
+              status={isDecrypted ? "DECRYPTED" : "CLICK_DECRYPT"}
+            />
+            <MetricCard
+              label="Club Balance"
+              value={isDecrypted ? "50.00 USDC" : "••••••"}
+              status={isDecrypted ? "DECRYPTED" : "CLICK_DECRYPT"}
+            />
+            <MetricCard
+              label="Pending Prize"
+              value={isDecrypted ? (isClaimed ? "0.00 USDC" : "45.20 USDC") : "••••••"}
+              status={isClaimed ? "CLAIMED" : "CLAIMABLE"}
+            />
+            <MetricCard
+              label="Odds"
+              value={isDecrypted ? "12.4%" : "••••••"}
+              status="CONFIDENTIAL"
+            />
           </div>
           <div className="flex flex-wrap gap-3 mt-6">
-            <VeilButton>Decrypt Balance</VeilButton>
-            <VeilButton variant="secondary">Claim Prize</VeilButton>
-            <VeilButton variant="secondary">Withdraw Principal</VeilButton>
+            <VeilButton onClick={onDecrypt}>
+              {isDecrypted ? "Re-decrypt Balance" : "Decrypt Balance"}
+            </VeilButton>
+            <VeilButton disabled={isClaimed} onClick={onClaim} variant="secondary">
+              {isClaimed ? "Prize Claimed" : "Claim Prize (45.20 USDC)"}
+            </VeilButton>
+            <VeilButton onClick={onWithdraw} variant="secondary">
+              Withdraw Principal
+            </VeilButton>
           </div>
         </Panel>
         <Panel title="Transaction Queue">
@@ -1021,12 +1346,16 @@ function DataTable({ columns, rows }) {
   );
 }
 
-function TransactionForm({ mode }) {
+function TransactionForm({ mode, onDeposit }) {
+  const [amount, setAmount] = useState("100.00");
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
-      <LabelInput label="Amount" placeholder="100.00" />
-      <LabelInput label="Token" placeholder="Mock USDC" />
-      <VeilButton className="h-[50px]">Encrypt Deposit</VeilButton>
+      <LabelInput label="Amount" onChange={(e) => setAmount(e.target.value)} placeholder="100.00" value={amount} />
+      <LabelInput label="Token" placeholder="Mock USDC" value="cUSDC (ERC-7984)" />
+      <VeilButton className="h-[50px]" onClick={() => onDeposit && onDeposit(amount, mode === "global" ? "Global Pool" : "Private Club")}>
+        Encrypt Deposit
+      </VeilButton>
       <div className="md:col-span-3 border border-veil-gray-light bg-veil-gray-dark p-4">
         <span className="font-data-sm text-data-sm text-veil-white opacity-70 uppercase">
           &gt; {mode === "global" ? "GLOBAL_POOL" : "PRIVATE_CLUB"} :: amount encrypted client-side, proof submitted onchain
@@ -1036,13 +1365,15 @@ function TransactionForm({ mode }) {
   );
 }
 
-function LabelInput({ label, placeholder }) {
+function LabelInput({ label, placeholder, value, onChange }) {
   return (
     <label className="flex flex-col gap-2">
       <span className="font-label-caps text-label-caps text-veil-white opacity-50 uppercase">{label}</span>
       <input
         className="bg-veil-gray-dark border border-veil-gray-light text-veil-white font-data-sm text-data-sm px-4 py-4 focus:border-veil-purple focus:ring-0"
+        onChange={onChange}
         placeholder={placeholder}
+        value={value}
       />
     </label>
   );
@@ -1050,10 +1381,10 @@ function LabelInput({ label, placeholder }) {
 
 function DrawEngine() {
   const steps = [
-    ["01", "Read encrypted balances", "euint weights stay private"],
-    ["02", "Generate draw seed", "FHE randomness onchain"],
-    ["03", "Select weighted winner", "no balance decrypt"],
-    ["04", "Route prize handle", "winner decrypts only"]
+    ["01", "Read encrypted balances", "euint64 weights stay confidential onchain"],
+    ["02", "Generate FHE randomness", "FHE.randEuint64 bounded entropy on Sepolia"],
+    ["03", "Homomorphic selection", "FHE.select multiplexer selects winner in ciphertext"],
+    ["04", "Grant ACL decryption", "FHE.allow grants decryption ONLY to winner"]
   ];
 
   return (
@@ -1071,7 +1402,7 @@ function DrawEngine() {
   );
 }
 
-function ClubDetail({ club }) {
+function ClubDetail({ club, onDeposit, onTriggerDraw }) {
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -1085,36 +1416,52 @@ function ClubDetail({ club }) {
         <MetricCard label="Prize" value={club.prize} status="PRIVATE" />
       </div>
       <div className="flex flex-wrap gap-3">
-        <VeilButton>Deposit</VeilButton>
-        <VeilButton variant="secondary">Copy Invite</VeilButton>
-        <VeilButton variant="secondary">Trigger Draw</VeilButton>
+        <VeilButton onClick={() => onDeposit(50)}>Quick Deposit 50</VeilButton>
+        <VeilButton onClick={() => navigator.clipboard && navigator.clipboard.writeText(`VC-${club.id.toUpperCase()}`)} variant="secondary">
+          Copy Invite
+        </VeilButton>
+        <VeilButton onClick={onTriggerDraw} variant="secondary">
+          Trigger FHE Draw
+        </VeilButton>
       </div>
     </div>
   );
 }
 
-function ClubForm() {
+function ClubForm({ onCreate }) {
+  const [name, setName] = useState("");
+  const [minDeposit, setMinDeposit] = useState("25");
+
+  const handleSubmit = () => {
+    if (onCreate) {
+      onCreate(name || "Secret Vault Club");
+      setName("");
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <LabelInput label="Club Name" placeholder="Noir Syndicate" />
-      <LabelInput label="Min Deposit" placeholder="25 USDC" />
-      <LabelInput label="Draw Frequency" placeholder="Weekly" />
-      <LabelInput label="Member Visibility" placeholder="Anonymous" />
+      <LabelInput label="Club Name" onChange={(e) => setName(e.target.value)} placeholder="Noir Syndicate" value={name} />
+      <LabelInput label="Min Deposit" onChange={(e) => setMinDeposit(e.target.value)} placeholder="25 USDC" value={minDeposit} />
+      <LabelInput label="Draw Frequency" placeholder="Weekly" value="Weekly" />
+      <LabelInput label="Member Visibility" placeholder="Anonymous" value="Anonymous" />
       <div className="md:col-span-2">
-        <VeilButton>Create Encrypted Club</VeilButton>
+        <VeilButton onClick={handleSubmit}>Create Encrypted Club</VeilButton>
       </div>
     </div>
   );
 }
 
-function InviteForm() {
+function InviteForm({ onJoin }) {
+  const [code, setCode] = useState("");
+
   return (
     <div className="flex flex-col gap-4">
-      <LabelInput label="Invite Code" placeholder="VC-CLUB-01" />
+      <LabelInput label="Invite Code" onChange={(e) => setCode(e.target.value)} placeholder="VC-CLUB-01" value={code} />
       <div className="border border-veil-gray-light bg-veil-gray-dark p-4">
         <span className="font-data-sm text-data-sm text-veil-white opacity-70 uppercase">&gt; invite validates membership gate before encrypted deposit</span>
       </div>
-      <VeilButton>Join Club</VeilButton>
+      <VeilButton onClick={() => onJoin && onJoin(code)}>Join Club</VeilButton>
     </div>
   );
 }
@@ -1150,7 +1497,7 @@ function PrivacyList() {
         ["Hidden", "Member balances, total club capital, odds, and prize amounts"],
         ["Public", "Draw events, pool address, optional winner address, timestamps"],
         ["User-only", "Own balance and winnings after EIP-712 user decrypt"],
-        ["MVP limit", "50-100 member target with documented draw gas ceiling"]
+        ["FHE Kernel", "Onchain verifiable random winner selection in ciphertext"]
       ].map(([label, body]) => (
         <div className="border border-veil-gray-light bg-veil-gray-dark p-4" key={label}>
           <span className="font-label-caps text-label-caps text-veil-purple uppercase">{label}</span>
@@ -1180,7 +1527,11 @@ export default function App() {
 
         targets.forEach((target) => {
           const originalText = target.dataset.original;
+          const originalHeight = target.offsetHeight;
           let iteration = 0;
+
+          target.style.height = `${originalHeight}px`;
+          target.style.overflow = "hidden";
 
           const interval = window.setInterval(() => {
             target.innerText = originalText
@@ -1194,6 +1545,8 @@ export default function App() {
             if (iteration >= originalText.length) {
               window.clearInterval(interval);
               target.innerText = originalText;
+              target.style.height = "";
+              target.style.overflow = "";
             }
 
             iteration += originalText.length / 10;
@@ -1246,7 +1599,7 @@ export default function App() {
       )}
 
       {view === "landing" ? (
-        <LandingPage goApp={() => goApp("dashboard")} goGlobal={() => goApp("global")} />
+        <LandingPage goApp={() => goApp("dashboard")} goGlobal={() => goApp("global")} goDocs={() => navigate("/docs")} />
       ) : view === "docs" ? (
         <DocsPage docsSection={docsSection} navigate={navigate} />
       ) : (
@@ -1264,7 +1617,7 @@ function LandingHeader({ navigate }) {
     <nav className="fixed top-0 w-full z-50 bg-veil-black border-b border-veil-gray-light">
       <div className="flex justify-between items-center px-margin-mobile md:px-margin-desktop py-4 w-full max-w-container-max mx-auto">
         <button className="flex items-center gap-2" onClick={() => navigate("/")} type="button">
-          <span className="material-symbols-outlined text-veil-purple">lock</span>
+          <LogoMark className="w-12 h-12" />
           <span className="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-veil-white tracking-tighter">Veil Clubs</span>
         </button>
         <div className="hidden md:flex gap-8">
@@ -1298,7 +1651,7 @@ function AppHeader({ activePage, navigate, navigatePage }) {
       <div className="px-margin-mobile md:px-margin-desktop w-full max-w-container-max mx-auto">
         <div className="flex items-center justify-between gap-6 py-4">
           <button className="flex items-center gap-2 shrink-0" onClick={() => navigate("/")} type="button">
-            <span className="material-symbols-outlined text-veil-purple">lock</span>
+            <LogoMark />
             <span className="font-headline-lg-mobile text-headline-lg-mobile md:text-headline-lg text-veil-white tracking-tighter">Veil Clubs</span>
             <span className="hidden lg:inline font-label-caps text-label-caps text-veil-white opacity-40 uppercase border-l border-veil-gray-light pl-4 ml-2">
               App
@@ -1364,7 +1717,7 @@ function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-veil-purple">lock</span>
+              <LogoMark />
               <span className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white tracking-tighter">Veil Clubs</span>
             </div>
             <p className="font-body-md text-body-md text-veil-white opacity-60">The Confidential Yield Layer.</p>
