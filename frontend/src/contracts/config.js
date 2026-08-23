@@ -1,0 +1,16 @@
+import VeilClubsABI from "./VeilClubsABI.json";
+import VeilTokenABI from "./VeilTokenABI.json";
+
+export const VEIL_CLUBS_ADDRESS =
+  import.meta.env.VITE_VEIL_CLUBS_ADDRESS || "0x0000000000000000000000000000000000000000";
+
+export const VEIL_TOKEN_ADDRESS =
+  import.meta.env.VITE_VEIL_TOKEN_ADDRESS || "0x0000000000000000000000000000000000000000";
+
+export const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8787";
+
+export const IS_CONTRACT_CONFIGURED =
+  VEIL_CLUBS_ADDRESS !== "0x0000000000000000000000000000000000000000";
+
+export { VeilClubsABI, VeilTokenABI };

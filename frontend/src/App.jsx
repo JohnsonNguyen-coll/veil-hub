@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useAccount, useWriteContract } from "wagmi";
 import * as THREE from "three";
+import {
+  VEIL_CLUBS_ADDRESS,
+  VEIL_TOKEN_ADDRESS,
+  VeilClubsABI,
+  VeilTokenABI,
+  IS_CONTRACT_CONFIGURED
+} from "./contracts/config.js";
 
 const pools = [
   {
@@ -81,7 +89,7 @@ function VeilButton({ children, disabled = false, onClick, variant = "primary", 
 
   return (
     <button
-      className={`${variantClass} font-label-caps text-label-caps px-6 py-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      className={`${variantClass} font-data-sm text-[13px] md:text-[14px] font-bold tracking-wider px-6 md:px-7 py-3 md:py-3.5 uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
       disabled={disabled}
       onClick={onClick}
       type="button"
@@ -124,7 +132,7 @@ function Globe() {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-    camera.position.z = 2.8;
+    camera.position.z = 2.15;
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setSize(width, height);
@@ -208,7 +216,7 @@ function Globe() {
 
   return (
     <div
-      className="flex-1 relative w-full h-[600px] lg:h-[800px] flex items-center justify-center pointer-events-auto"
+      className="flex-1 relative w-full h-[650px] lg:h-[850px] flex items-center justify-center pointer-events-auto -mt-6 lg:-mt-10"
       ref={containerRef}
     />
   );
@@ -500,22 +508,22 @@ const docsBySlug = Object.fromEntries(docsTopics.map((topic) => [topic.slug, top
 function LandingPage({ goApp, goGlobal, goDocs }) {
   return (
     <>
-      <main className="flex-grow pt-32 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full flex flex-col gap-24">
-        <section className="flex flex-col lg:flex-row items-center gap-12 min-h-[716px] relative">
+      <main className="flex-grow pt-24 md:pt-28 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full flex flex-col gap-20 md:gap-24">
+        <section className="flex flex-col lg:flex-row items-center gap-8 lg:gap-12 min-h-[640px] lg:min-h-[760px] relative -mt-6">
           <div className="flex-1 flex flex-col gap-6 z-10">
-            <h1 className="font-headline-xl text-[48px] md:text-[72px] leading-tight text-veil-white font-bold tracking-tighter uppercase">
+            <h1 className="font-headline-xl text-[54px] sm:text-[70px] md:text-[88px] lg:text-[98px] leading-[1.0] text-veil-white font-bold tracking-tighter uppercase">
               The Confidential
               <br />
               <span className="text-veil-purple">Yield Layer</span>
             </h1>
-            <p className="font-body-md text-body-md text-veil-white opacity-80 max-w-xl text-lg">
+            <p className="font-body-md text-body-md text-veil-white opacity-80 max-w-xl text-lg md:text-xl leading-relaxed">
               No-loss prize pools with end-to-end encryption. Earn yield and win big without ever losing your principal. Designed for elite capital.
             </p>
-            <div className="flex flex-wrap gap-4 mt-8">
-              <VeilButton className="px-8 py-4" onClick={goApp}>
+            <div className="flex flex-wrap gap-4 mt-6">
+              <VeilButton className="px-8 py-4 text-[15px]" onClick={goApp}>
                 Launch App
               </VeilButton>
-              <VeilButton className="px-8 py-4" onClick={goGlobal} variant="secondary">
+              <VeilButton className="px-8 py-4 text-[15px]" onClick={goGlobal} variant="secondary">
                 Explore Global Pool
               </VeilButton>
             </div>
@@ -914,6 +922,9 @@ function ToastNotification({ toast, onClose }) {
 }
 
 function AppWorkspace({ activePage, navigatePage }) {
+  const { address, isConnected } = useAccount();
+  const { writeContractAsync } = useWriteContract();
+
   const [toast, setToast] = useState(null);
   const [poolsState, setPoolsState] = useState(pools);
   const [drawsState, setDrawsState] = useState(drawHistory);
@@ -923,29 +934,59 @@ function AppWorkspace({ activePage, navigatePage }) {
 
   const showToast = (title, message) => {
     setToast({ title, message });
-    window.setTimeout(() => setToast(null), 4500);
+    window.setTimeout(() => setToast(null), 5000);
   };
 
-  const handleDeposit = (amount, poolName = "Global Pool") => {
+  const handleDeposit = async (amount, poolName = "Global Pool") => {
     const num = parseFloat(amount) || 100;
-    setUserDeposit((prev) => prev + num);
-    showToast(
-      "Deposit Confirmed",
-      `Encrypted ${num} USDC via FHE input proof. Deposited into ${poolName} anonymously.`
-    );
+    if (isConnected && IS_CONTRACT_CONFIGURED) {
+      try {
+        showToast("Submitting Onchain", "Signing encrypted deposit transaction on Sepolia...");
+        const tx = await writeContractAsync({
+          address: VEIL_CLUBS_ADDRESS,
+          abi: VeilClubsABI,
+          functionName: "deposit",
+          args: [0, "0x0000000000000000000000000000000000000000000000000000000000000000", "0x"]
+        });
+        showToast("Tx Submitted", `Onchain deposit tx sent: ${tx.slice(0, 10)}...${tx.slice(-6)}`);
+      } catch (err) {
+        showToast("Tx Error", err.shortMessage || err.message || "Failed to submit transaction");
+      }
+    } else {
+      setUserDeposit((prev) => prev + num);
+      showToast(
+        "Deposit Confirmed",
+        `Encrypted ${num} USDC via FHE input proof. Deposited into ${poolName} anonymously.`
+      );
+    }
   };
 
-  const handleTriggerDraw = (poolName = "Global Pool") => {
+  const handleTriggerDraw = async (poolName = "Global Pool") => {
     const nextDrawNum = `#00${drawsState.length + 40}`;
-    const newDraw = [nextDrawNum, poolName, "Verifiable Encrypted Winner", "0xPRIZE..." + Math.random().toString(16).substring(2, 6).toUpperCase(), "CLAIMABLE"];
-    setDrawsState([newDraw, ...drawsState]);
-    showToast(
-      "FHE Draw Executed",
-      `Onchain verifiable draw ${nextDrawNum} executed for ${poolName}. Winner selected homomorphically.`
-    );
+    if (isConnected && IS_CONTRACT_CONFIGURED) {
+      try {
+        showToast("Triggering Onchain Draw", "Sending FHE draw execution transaction on Sepolia...");
+        const tx = await writeContractAsync({
+          address: VEIL_CLUBS_ADDRESS,
+          abi: VeilClubsABI,
+          functionName: "executeDraw",
+          args: [0, "0x0000000000000000000000000000000000000000000000000000000000000000"]
+        });
+        showToast("Draw Tx Sent", `FHE Draw tx: ${tx.slice(0, 10)}...${tx.slice(-6)}`);
+      } catch (err) {
+        showToast("Draw Error", err.shortMessage || err.message || "Failed to trigger draw");
+      }
+    } else {
+      const newDraw = [nextDrawNum, poolName, "Verifiable Encrypted Winner", "0xPRIZE..." + Math.random().toString(16).substring(2, 6).toUpperCase(), "CLAIMABLE"];
+      setDrawsState([newDraw, ...drawsState]);
+      showToast(
+        "FHE Draw Executed",
+        `Onchain verifiable draw ${nextDrawNum} executed for ${poolName}. Winner selected homomorphically.`
+      );
+    }
   };
 
-  const handleDecrypt = () => {
+  const handleDecrypt = async () => {
     showToast("EIP-712 KMS Decrypt", "Decryption request signed. Retrieving private balance handles from Zama KMS...");
     window.setTimeout(() => {
       setIsDecrypted(true);
@@ -953,38 +994,85 @@ function AppWorkspace({ activePage, navigatePage }) {
     }, 600);
   };
 
-  const handleClaim = () => {
+  const handleClaim = async () => {
     if (isClaimed) {
       showToast("Already Claimed", "You have already claimed all pending prizes for this draw.");
       return;
     }
-    setIsClaimed(true);
-    showToast("Prize Claimed", "Transferred 45.20 cUSDC prize into your confidential token wallet!");
+    if (isConnected && IS_CONTRACT_CONFIGURED) {
+      try {
+        showToast("Claiming Prize", "Submitting prize claim transaction on Sepolia...");
+        const tx = await writeContractAsync({
+          address: VEIL_CLUBS_ADDRESS,
+          abi: VeilClubsABI,
+          functionName: "claimPrize",
+          args: [0, 1]
+        });
+        setIsClaimed(true);
+        showToast("Prize Claimed Onchain", `Claim tx: ${tx.slice(0, 10)}...${tx.slice(-6)}`);
+      } catch (err) {
+        showToast("Claim Error", err.shortMessage || err.message || "Failed to claim prize");
+      }
+    } else {
+      setIsClaimed(true);
+      showToast("Prize Claimed", "Transferred 45.20 cUSDC prize into your confidential token wallet!");
+    }
   };
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     if (userDeposit <= 0) {
       showToast("No Principal", "Current confidential principal balance is 0.");
       return;
     }
-    const amt = userDeposit;
-    setUserDeposit(0);
-    showToast("Principal Withdrawn", `Withdrew ${amt}.00 USDC principal without loss to your wallet.`);
+    if (isConnected && IS_CONTRACT_CONFIGURED) {
+      try {
+        showToast("Withdrawing", "Submitting principal withdrawal transaction on Sepolia...");
+        const tx = await writeContractAsync({
+          address: VEIL_CLUBS_ADDRESS,
+          abi: VeilClubsABI,
+          functionName: "withdrawPrincipal",
+          args: [0]
+        });
+        setUserDeposit(0);
+        showToast("Withdrawal Confirmed", `Withdraw tx: ${tx.slice(0, 10)}...${tx.slice(-6)}`);
+      } catch (err) {
+        showToast("Withdraw Error", err.shortMessage || err.message || "Failed to withdraw");
+      }
+    } else {
+      const amt = userDeposit;
+      setUserDeposit(0);
+      showToast("Principal Withdrawn", `Withdrew ${amt}.00 USDC principal without loss to your wallet.`);
+    }
   };
 
-  const handleCreateClub = (name) => {
-    const newClub = {
-      id: `club-0${poolsState.length}`,
-      name: name || "Encrypted Club",
-      scope: "PRIVATE",
-      tvl: "0x" + Math.random().toString(16).substring(2, 6).toUpperCase() + "...HIDDEN",
-      members: "1",
-      draw: "07D 00H",
-      prize: "•••••• USDC",
-      status: "YIELD_ACCRUING"
-    };
-    setPoolsState([...poolsState, newClub]);
-    showToast("Private Club Created", `Created "${newClub.name}" with independent FHE draw lifecycle.`);
+  const handleCreateClub = async (name) => {
+    if (isConnected && IS_CONTRACT_CONFIGURED) {
+      try {
+        showToast("Creating Club", "Deploying private club parameters onchain...");
+        const tx = await writeContractAsync({
+          address: VEIL_CLUBS_ADDRESS,
+          abi: VeilClubsABI,
+          functionName: "createClub",
+          args: [name || "Private Club", "Confidential Club", 25n, 604800n, true]
+        });
+        showToast("Club Created Onchain", `Creation tx: ${tx.slice(0, 10)}...${tx.slice(-6)}`);
+      } catch (err) {
+        showToast("Create Error", err.shortMessage || err.message || "Failed to create club");
+      }
+    } else {
+      const newClub = {
+        id: `club-0${poolsState.length}`,
+        name: name || "Encrypted Club",
+        scope: "PRIVATE",
+        tvl: "0x" + Math.random().toString(16).substring(2, 6).toUpperCase() + "...HIDDEN",
+        members: "1",
+        draw: "07D 00H",
+        prize: "•••••• USDC",
+        status: "YIELD_ACCRUING"
+      };
+      setPoolsState([...poolsState, newClub]);
+      showToast("Private Club Created", `Created "${newClub.name}" with independent FHE draw lifecycle.`);
+    }
   };
 
   const handleJoinClub = (inviteCode) => {
@@ -998,10 +1086,14 @@ function AppWorkspace({ activePage, navigatePage }) {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex flex-wrap gap-8">
             <StatBlock label="Network" value="Sepolia" status="FHEVM_TESTNET" />
-            <StatBlock label="Protocol Mode" value="ERC-7984" status="CONFIDENTIAL_POOL" />
+            <StatBlock
+              label="Protocol Mode"
+              value={IS_CONTRACT_CONFIGURED ? "On-Chain" : "Simulation"}
+              status={IS_CONTRACT_CONFIGURED ? "SEPOLIA_LIVE" : "READY_FOR_DEPLOY"}
+            />
             <StatBlock label="Privacy State" value="Encrypted" status="USER_DECRYPT_ONLY" />
           </div>
-          <StatusDot label="App Online" />
+          <StatusDot label={IS_CONTRACT_CONFIGURED ? "Contract Active" : "App Online"} />
         </div>
       </section>
 
@@ -1623,9 +1715,6 @@ function LandingHeader({ navigate }) {
         <div className="hidden md:flex gap-8">
           <button className="font-body-md text-body-md text-veil-white font-bold border-b-2 border-veil-purple pb-1" onClick={() => navigate("/")} type="button">
             Explore
-          </button>
-          <button className="font-body-md text-body-md text-veil-white opacity-70 hover:opacity-100 transition-opacity duration-300 pb-1" onClick={() => navigate(APP_ROUTES.dashboard)} type="button">
-            Dashboard
           </button>
           <button className="font-body-md text-body-md text-veil-white opacity-70 hover:opacity-100 transition-opacity duration-300 pb-1" onClick={() => navigate("/docs")} type="button">
             Docs

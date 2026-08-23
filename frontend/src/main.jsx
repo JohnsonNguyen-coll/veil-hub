@@ -5,18 +5,31 @@ import { getDefaultConfig, RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
 import { sepolia } from "wagmi/chains";
-import { http } from "wagmi";
+import { http, fallback } from "wagmi";
 import App from "./App.jsx";
 import "./styles.css";
 
 const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "YOUR_PROJECT_ID";
+const customRpcUrl = import.meta.env.VITE_SEPOLIA_RPC_URL;
+
+const rpcEndpoints = [
+  http("https://rpc.sepolia.org"),
+  http("https://ethereum-sepolia-rpc.publicnode.com"),
+  http("https://sepolia.gateway.tenderly.co"),
+  http()
+];
+
+if (customRpcUrl) {
+  rpcEndpoints.push(http(customRpcUrl));
+}
+
 const queryClient = new QueryClient();
 const wagmiConfig = getDefaultConfig({
   appName: "Veil Clubs",
   projectId: walletConnectProjectId,
   chains: [sepolia],
   transports: {
-    [sepolia.id]: http()
+    [sepolia.id]: fallback(rpcEndpoints)
   }
 });
 
