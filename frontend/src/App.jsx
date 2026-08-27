@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import * as THREE from "three";
 import {
   VEIL_CLUBS_ADDRESS,
   VEIL_TOKEN_ADDRESS,
+  VEIL_UNDERLYING_TOKEN_ADDRESS,
   VeilClubsABI,
-  VeilTokenABI,
   IS_CONTRACT_CONFIGURED,
+  IS_TOKEN_CONFIGURED,
   BACKEND_URL
 } from "./contracts/config.js";
 
@@ -1357,8 +1358,59 @@ function ToastNotification({ toast, onClose }) {
   );
 }
 
+const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
+const FAUCET_UNDERLYING_AMOUNT = 100_000_000n;
+const MOCK_ERC20_ABI = [
+  {
+    inputs: [
+      { internalType: "address", name: "to", type: "address" },
+      { internalType: "uint256", name: "amount", type: "uint256" }
+    ],
+    name: "mint",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "spender", type: "address" },
+      { internalType: "uint256", name: "amount", type: "uint256" }
+    ],
+    name: "approve",
+    outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  }
+];
+const CONFIDENTIAL_WRAPPER_ABI = [
+  {
+    inputs: [
+      { internalType: "address", name: "to", type: "address" },
+      { internalType: "uint256", name: "amount", type: "uint256" }
+    ],
+    name: "wrap",
+    outputs: [{ internalType: "euint64", name: "", type: "bytes32" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  }
+];
+
+function isUserRejectedRequest(error) {
+  const code = error?.code || error?.cause?.code;
+  const message = `${error?.shortMessage || ""} ${error?.message || ""} ${error?.cause?.message || ""}`.toLowerCase();
+  return code === 4001 || code === "ACTION_REJECTED" || message.includes("user rejected") || message.includes("user denied") || message.includes("rejected the request");
+}
+
+function txErrorMessage(error, fallback = "Transaction failed. Please try again.") {
+  if (isUserRejectedRequest(error)) {
+    return "Bạn đã hủy giao dịch trong ví. Chưa có thao tác nào được thực hiện.";
+  }
+  return error?.shortMessage || error?.message || fallback;
+}
+
 function AppWorkspace({ activePage, navigatePage, onFaucet }) {
   const { address, isConnected } = useAccount();
+  const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
 
   const [toast, setToast] = useState(null);
@@ -1374,26 +1426,75 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     window.setTimeout(() => setToast(null), 8000);
   };
 
+  const submitContractTx = async ({ signingTitle, signingMessage, confirmedTitle, confirmedMessage, ...request }) => {
+    showToast(signingTitle, signingMessage);
+    const txHash = await writeContractAsync(request);
+
+    if (!txHash) {
+      throw new Error("Wallet did not return a transaction hash.");
+    }
+
+    showToast("Transaction Submitted", "Waiting for Sepolia confirmation...", txHash);
+
+    if (!publicClient) {
+      return txHash;
+    }
+
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    if (receipt.status !== "success") {
+      throw new Error("Transaction reverted onchain.");
+    }
+
+    showToast(confirmedTitle, confirmedMessage, txHash);
+    return txHash;
+  };
+
   const handleFaucet = async () => {
     const targetAddr = address || "0x7C2100000000000000000000000000000000BEEF";
-    let onchainTxHash = null;
 
-    if (isConnected && IS_CONTRACT_CONFIGURED) {
-      try {
-        showToast("Signing Onchain Faucet", "Signing 100 cUSDC Faucet transaction on Sepolia...");
-        const useTokenContract = VEIL_TOKEN_ADDRESS && VEIL_TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000";
-        const tx = await writeContractAsync({
-          address: useTokenContract ? VEIL_TOKEN_ADDRESS : VEIL_CLUBS_ADDRESS,
-          abi: useTokenContract ? VeilTokenABI : VeilClubsABI,
-          functionName: useTokenContract ? "faucetMint" : "createClub",
-          args: useTokenContract
-            ? [targetAddr]
-            : [`Faucet 100 cUSDC`, `Testnet Token Dispatch to ${targetAddr.slice(0, 8)}`, 100n, 86400n, false]
-        });
-        onchainTxHash = tx;
-      } catch (err) {
-        console.warn("Onchain faucet dry-run:", err);
+    if (isConnected) {
+      if (!IS_TOKEN_CONFIGURED) {
+        showToast("Faucet Not Configured", "Missing VITE_VEIL_TOKEN_ADDRESS. Faucet cannot mint onchain cUSDC yet.");
+        return;
       }
+
+      try {
+        await submitContractTx({
+          signingTitle: "Faucet Step 1/3",
+          signingMessage: "Mint 100 Sepolia USDC mock from Zama's official test underlying token.",
+          confirmedTitle: "Underlying Minted",
+          confirmedMessage: "Minted 100 Sepolia USDC mock. Next: approve the confidential wrapper.",
+          address: VEIL_UNDERLYING_TOKEN_ADDRESS,
+          abi: MOCK_ERC20_ABI,
+          functionName: "mint",
+          args: [targetAddr, FAUCET_UNDERLYING_AMOUNT]
+        });
+        await submitContractTx({
+          signingTitle: "Faucet Step 2/3",
+          signingMessage: "Approve Zama's cUSDCMock wrapper to wrap your 100 mock USDC.",
+          confirmedTitle: "Wrapper Approved",
+          confirmedMessage: "Approved wrapper. Next: wrap into confidential cUSDC.",
+          address: VEIL_UNDERLYING_TOKEN_ADDRESS,
+          abi: MOCK_ERC20_ABI,
+          functionName: "approve",
+          args: [VEIL_TOKEN_ADDRESS, FAUCET_UNDERLYING_AMOUNT]
+        });
+        await submitContractTx({
+          signingTitle: "Faucet Step 3/3",
+          signingMessage: "Wrap 100 mock USDC into official Zama cUSDCMock.",
+          confirmedTitle: "Faucet Confirmed",
+          confirmedMessage: "Wrapped 100 mock USDC into confidential cUSDCMock on Sepolia.",
+          address: VEIL_TOKEN_ADDRESS,
+          abi: CONFIDENTIAL_WRAPPER_ABI,
+          functionName: "wrap",
+          args: [targetAddr, FAUCET_UNDERLYING_AMOUNT]
+        });
+        setWalletBalance((prev) => prev + 100);
+      } catch (err) {
+        console.warn("Onchain faucet failed:", err);
+        showToast(isUserRejectedRequest(err) ? "Faucet Cancelled" : "Faucet Failed", txErrorMessage(err, "Failed to mint faucet tokens."));
+      }
+      return;
     }
 
     try {
@@ -1403,20 +1504,19 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
         body: JSON.stringify({ address: targetAddr })
       });
       const data = await res.json();
-      const finalTx = onchainTxHash || (data.allowed ? data.txHash : null);
-      if (res.ok || onchainTxHash) {
+      if (res.ok && data.allowed) {
         setWalletBalance((prev) => prev + 100);
         showToast(
-          "Faucet Tx Confirmed",
-          `Dispatched 100 cUSDC confidential test tokens on Sepolia!`,
-          finalTx
+          "Demo Faucet Added",
+          "Added 100 demo cUSDC locally. Connect a wallet to mint real faucet tokens.",
+          data.txHash
         );
       } else {
-        showToast("Faucet Notice", data.message || "Cooldown active: 24h limit per wallet address.", onchainTxHash);
+        showToast("Faucet Notice", data.message || "Cooldown active: 24h limit per wallet address.");
       }
     } catch (err) {
       setWalletBalance((prev) => prev + 100);
-      showToast("Faucet Tx Confirmed", "Dispatched 100 cUSDC test tokens on Sepolia!", onchainTxHash);
+      showToast("Demo Faucet Added", "Backend unavailable, so 100 demo cUSDC was added locally.");
     }
   };
 
@@ -1471,52 +1571,46 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
 
   const handleDeposit = async (amount, poolName = "Global Pool") => {
     const num = parseFloat(amount) || 100;
-    let submittedOnchain = false;
+    const isLiveOnchain = isConnected && IS_CONTRACT_CONFIGURED;
 
-    if (isConnected && IS_CONTRACT_CONFIGURED) {
-      try {
-        showToast("Submitting Onchain", "Signing encrypted deposit transaction on Sepolia...");
-        const tx = await writeContractAsync({
-          address: VEIL_CLUBS_ADDRESS,
-          abi: VeilClubsABI,
-          functionName: "createClub",
-          args: [`Deposit ${num} USDC`, `Encrypted Pool Stake`, BigInt(num), 86400n, false]
-        });
-        showToast("Onchain Tx Confirmed", `Encrypted deposit transaction confirmed on Sepolia!`, tx);
-        submittedOnchain = true;
-      } catch (err) {
-        console.warn("Onchain deposit dry-run:", err);
-        showToast(
-          "FHE Input Proof",
-          `Client generated FHE ciphertext handle for ${num} USDC deposit into ${poolName}.`
-        );
-      }
+    if (Number.isNaN(num) || num <= 0) {
+      showToast("Invalid Amount", "Enter a deposit amount greater than 0.");
+      return;
+    }
+
+    if (isLiveOnchain) {
+      showToast(
+        "Deposit Not Ready",
+        "Onchain deposit requires a real FHE encrypted input and proof. The app will not send a fake createClub transaction."
+      );
+      return;
     }
 
     setUserDeposit((prev) => prev + num);
     setWalletBalance((prev) => Math.max(0, prev - num));
-    if (!submittedOnchain) {
-      showToast(
-        "Deposit Confirmed",
-        `Encrypted ${num} USDC via FHE input proof. Deposited into ${poolName} anonymously.`
-      );
-    }
+    showToast(
+      "Demo Deposit Added",
+      `Added ${num} demo cUSDC to ${poolName}. Connect configured contracts after FHE input generation is enabled.`
+    );
   };
 
   const handleTriggerDraw = async (poolName = "Global Pool") => {
     if (isConnected && IS_CONTRACT_CONFIGURED) {
       try {
-        showToast("Triggering Onchain Draw", "Sending FHE draw execution transaction on Sepolia...");
-        const tx = await writeContractAsync({
+        await submitContractTx({
+          signingTitle: "Triggering Draw",
+          signingMessage: "Confirm the FHE draw transaction in your wallet.",
+          confirmedTitle: "Draw Confirmed",
+          confirmedMessage: `FHE draw transaction confirmed for ${poolName}.`,
           address: VEIL_CLUBS_ADDRESS,
           abi: VeilClubsABI,
-          functionName: "createClub",
-          args: [`FHE Draw ${poolName}`, `Weighted Homomorphic Winner Selection`, 1n, 86400n, true]
+          functionName: "triggerDraw",
+          args: [0n, ZERO_BYTES32]
         });
-        showToast("Draw Tx Confirmed", `FHE draw transaction confirmed on Sepolia!`, tx);
       } catch (err) {
-        showToast("Draw Error", err.shortMessage || err.message || "Failed to trigger draw");
+        showToast(isUserRejectedRequest(err) ? "Draw Cancelled" : "Draw Error", txErrorMessage(err, "Failed to trigger draw."));
       }
+      return;
     }
 
     try {
@@ -1537,8 +1631,8 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
         ];
         setDrawsState((prev) => [newDrawRow, ...prev]);
         showToast(
-          "FHE Draw Executed",
-          `Onchain verifiable draw executed for ${poolName}. Winner selected homomorphically.`,
+          "Demo Draw Executed",
+          `Created a demo draw for ${poolName}. Connect configured contracts to execute onchain.`,
           d.txHash
         );
         return;
@@ -1551,8 +1645,8 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     const newDraw = [nextDrawNum, poolName, "Verifiable Encrypted Winner", "0xPRIZE...", "CLAIMABLE"];
     setDrawsState((prev) => [newDraw, ...prev]);
     showToast(
-      "FHE Draw Executed",
-      `Onchain verifiable draw ${nextDrawNum} executed for ${poolName}. Winner selected homomorphically.`
+      "Demo Draw Executed",
+      `Created demo draw ${nextDrawNum} for ${poolName}. Connect configured contracts to execute onchain.`
     );
   };
 
@@ -1571,17 +1665,19 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     }
     if (isConnected && IS_CONTRACT_CONFIGURED) {
       try {
-        showToast("Claiming Prize", "Submitting prize claim transaction on Sepolia...");
-        const tx = await writeContractAsync({
+        await submitContractTx({
+          signingTitle: "Claiming Prize",
+          signingMessage: "Confirm the prize claim transaction in your wallet.",
+          confirmedTitle: "Prize Claimed",
+          confirmedMessage: "Prize claim confirmed on Sepolia.",
           address: VEIL_CLUBS_ADDRESS,
           abi: VeilClubsABI,
           functionName: "claimPrize",
-          args: [0, 1]
+          args: [0n, 1n]
         });
         setIsClaimed(true);
-        showToast("Prize Claimed Onchain", `Claim tx: ${tx.slice(0, 10)}...${tx.slice(-6)}`);
       } catch (err) {
-        showToast("Claim Error", err.shortMessage || err.message || "Failed to claim prize");
+        showToast(isUserRejectedRequest(err) ? "Claim Cancelled" : "Claim Error", txErrorMessage(err, "Failed to claim prize."));
       }
     } else {
       setIsClaimed(true);
@@ -1596,17 +1692,19 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     }
     if (isConnected && IS_CONTRACT_CONFIGURED) {
       try {
-        showToast("Withdrawing", "Submitting principal withdrawal transaction on Sepolia...");
-        const tx = await writeContractAsync({
+        await submitContractTx({
+          signingTitle: "Withdrawing",
+          signingMessage: "Confirm the principal withdrawal transaction in your wallet.",
+          confirmedTitle: "Withdrawal Confirmed",
+          confirmedMessage: "Principal withdrawal confirmed on Sepolia.",
           address: VEIL_CLUBS_ADDRESS,
           abi: VeilClubsABI,
           functionName: "withdrawPrincipal",
-          args: [0]
+          args: [0n]
         });
         setUserDeposit(0);
-        showToast("Withdrawal Confirmed", `Withdraw tx: ${tx.slice(0, 10)}...${tx.slice(-6)}`);
       } catch (err) {
-        showToast("Withdraw Error", err.shortMessage || err.message || "Failed to withdraw");
+        showToast(isUserRejectedRequest(err) ? "Withdraw Cancelled" : "Withdraw Error", txErrorMessage(err, "Failed to withdraw."));
       }
     } else {
       const amt = userDeposit;
@@ -1619,16 +1717,18 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
   const handleCreateClub = async (name) => {
     if (isConnected && IS_CONTRACT_CONFIGURED) {
       try {
-        showToast("Creating Club", "Deploying private club parameters onchain...");
-        const tx = await writeContractAsync({
+        await submitContractTx({
+          signingTitle: "Creating Club",
+          signingMessage: "Confirm the private club creation transaction in your wallet.",
+          confirmedTitle: "Club Created Onchain",
+          confirmedMessage: "Private club creation confirmed on Sepolia.",
           address: VEIL_CLUBS_ADDRESS,
           abi: VeilClubsABI,
           functionName: "createClub",
           args: [name || "Private Club", "Confidential Club", 25n, 604800n, true]
         });
-        showToast("Club Created Onchain", `Creation tx confirmed on Sepolia!`, tx);
       } catch (err) {
-        showToast("Create Cancelled", err.shortMessage || err.message || "Transaction was rejected.");
+        showToast(isUserRejectedRequest(err) ? "Create Cancelled" : "Create Failed", txErrorMessage(err, "Failed to create club."));
         return;
       }
     }
