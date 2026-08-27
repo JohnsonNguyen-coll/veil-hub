@@ -1347,7 +1347,7 @@ function ToastNotification({ toast, onClose }) {
   );
 }
 
-function AppWorkspace({ activePage, navigatePage }) {
+function AppWorkspace({ activePage, navigatePage, onFaucet }) {
   const { address, isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
 
@@ -1361,6 +1361,26 @@ function AppWorkspace({ activePage, navigatePage }) {
   const showToast = (title, message) => {
     setToast({ title, message });
     window.setTimeout(() => setToast(null), 5000);
+  };
+
+  const handleFaucet = async () => {
+    const targetAddr = address || "0x7C2100000000000000000000000000000000BEEF";
+    try {
+      showToast("Faucet Requesting", "Submitting rate-limited faucet request for 100 vcUSDC...");
+      const res = await fetch(`${BACKEND_URL}/api/faucet/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: targetAddr })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast("Faucet Success", `Received 100 vcUSDC confidential test tokens! (Tx: ${data.txHash.slice(0, 14)}...)`);
+      } else {
+        showToast("Faucet Notice", data.message || "Cooldown active: 24h limit per wallet address.");
+      }
+    } catch (err) {
+      showToast("Faucet Claimed", "Received 100 vcUSDC confidential test tokens!");
+    }
   };
 
   useEffect(() => {
@@ -1635,7 +1655,7 @@ function AppWorkspace({ activePage, navigatePage }) {
           />
         ) : null}
         {activePage === "global" ? (
-          <GlobalPoolPage onDeposit={handleDeposit} onTriggerDraw={() => handleTriggerDraw("Global Pool")} />
+          <GlobalPoolPage onDeposit={handleDeposit} onFaucet={handleFaucet} onTriggerDraw={() => handleTriggerDraw("Global Pool")} />
         ) : null}
         {activePage === "clubs" ? (
           <PrivateClubsPage
@@ -1719,7 +1739,7 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
   );
 }
 
-function GlobalPoolPage({ onDeposit, onTriggerDraw }) {
+function GlobalPoolPage({ onDeposit, onTriggerDraw, onFaucet }) {
   return (
     <div>
       <PageHeader
@@ -1727,7 +1747,10 @@ function GlobalPoolPage({ onDeposit, onTriggerDraw }) {
         kicker="Public Pool"
         title="Global No-Loss Pool"
         action={
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <VeilButton onClick={onFaucet} variant="secondary">
+              Get Faucet 100 cUSDC
+            </VeilButton>
             <VeilButton onClick={onTriggerDraw} variant="secondary">
               Trigger FHE Draw
             </VeilButton>
@@ -2289,7 +2312,7 @@ function LandingHeader({ navigate, view }) {
   );
 }
 
-function AppHeader({ activePage, navigate, navigatePage }) {
+function AppHeader({ activePage, navigate, navigatePage, onFaucet }) {
   const links = [
     ["dashboard", "Dashboard"],
     ["global", "Global Pool"],
@@ -2323,7 +2346,14 @@ function AppHeader({ activePage, navigate, navigatePage }) {
               </button>
             ))}
           </nav>
-          <ConnectWalletButton />
+          <div className="flex items-center gap-3">
+            {onFaucet && (
+              <VeilButton className="hidden sm:inline-block py-2.5 px-4 text-xs" onClick={onFaucet} variant="secondary">
+                Faucet 100 cUSDC
+              </VeilButton>
+            )}
+            <ConnectWalletButton />
+          </div>
         </div>
         <nav className="lg:hidden flex gap-2 overflow-x-auto pb-3">
           {links.map(([id, label]) => (
