@@ -9,6 +9,7 @@
     "compile": "hardhat compile",
     "compile:solc": "node scripts/compile-solc.js",
     "test": "hardhat test",
+    "deploy": "node scripts/deploy.js",
     "deploy:sepolia": "node scripts/deploy.js"
   },
   "dependencies": {
