@@ -339,31 +339,6 @@
     "inputs": [
       {
         "indexed": true,
-        "internalType": "uint256",
-        "name": "clubId",
-        "type": "uint256"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "source",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "euint64",
-        "name": "amountHandle",
-        "type": "bytes32"
-      }
-    ],
-    "name": "MockYieldAccrued",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
         "internalType": "address",
         "name": "previousOwner",
         "type": "address"
@@ -421,7 +396,7 @@
       {
         "indexed": true,
         "internalType": "address",
-        "name": "winner",
+        "name": "member",
         "type": "address"
       },
       {
@@ -431,7 +406,7 @@
         "type": "bytes32"
       }
     ],
-    "name": "PrizeClaimPrepared",
+    "name": "PrizeClaimed",
     "type": "event"
   },
   {
@@ -445,24 +420,18 @@
       },
       {
         "indexed": true,
-        "internalType": "uint256",
-        "name": "drawId",
-        "type": "uint256"
-      },
-      {
-        "indexed": true,
         "internalType": "address",
-        "name": "member",
+        "name": "source",
         "type": "address"
       },
       {
         "indexed": false,
         "internalType": "euint64",
-        "name": "prizeHandle",
+        "name": "amountHandle",
         "type": "bytes32"
       }
     ],
-    "name": "PrizeClaimed",
+    "name": "YieldAccrued",
     "type": "event"
   },
   {
@@ -509,7 +478,7 @@
         "type": "bytes"
       }
     ],
-    "name": "accrueMockYield",
+    "name": "accrueYield",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -874,34 +843,6 @@
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "clubId",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "drawId",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "winner",
-        "type": "address"
-      },
-      {
-        "internalType": "euint64",
-        "name": "prize",
-        "type": "bytes32"
-      }
-    ],
-    "name": "preparePrizeClaim",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   },
   {

@@ -2,6 +2,7 @@
   "clubs": [
     {
       "id": "global",
+      "contractClubId": "0",
       "name": "Global Pool",
       "description": "Public confidential no-loss prize pool.",
       "scope": "PUBLIC",
@@ -13,8 +14,8 @@
       "nextDrawAt": "2026-08-28T00:00:00.000Z",
       "anonymousMembers": false,
       "memberCount": 0,
-      "encryptedTvlHandle": "ciphertext:empty-total",
-      "encryptedPrizeHandle": "ciphertext:empty-prize",
+      "encryptedTvlHandle": "encrypted",
+      "encryptedPrizeHandle": "encrypted",
       "status": "ACTIVE",
       "createdAt": "2026-08-28T00:00:00.000Z"
     }

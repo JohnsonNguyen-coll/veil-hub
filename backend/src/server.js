@@ -16,7 +16,7 @@ const seedFile = path.join(dataDir, "veil-clubs.example.json");
 
 const PORT = Number(process.env.PORT || 8787);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://127.0.0.1:5174";
-const KEEPER_ENABLED = (process.env.KEEPER_ENABLED || "true") === "true";
+const KEEPER_ENABLED = (process.env.KEEPER_ENABLED || "false") === "true";
 const KEEPER_INTERVAL_MS = Number(process.env.KEEPER_INTERVAL_MS || 30000);
 const FAUCET_COOLDOWN_MS = Number(process.env.FAUCET_COOLDOWN_MS || 86400000);
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
@@ -46,7 +46,6 @@ const routes = [
   route("POST", /^\/api\/clubs\/([^/]+)\/invites$/, createInvite),
   route("POST", /^\/api\/join$/, joinClub),
   route("GET", /^\/api\/draws$/, listDraws),
-  route("POST", /^\/api\/draws\/trigger$/, triggerDraw),
   route("POST", /^\/api\/faucet\/request$/, requestFaucet)
 ];
 
@@ -190,6 +189,8 @@ function clubFromRow(row) {
     memberCount: row.member_count,
     encryptedTvlHandle: row.encrypted_tvl_handle,
     encryptedPrizeHandle: row.encrypted_prize_handle,
+    contractClubId: row.contract_club_id,
+    createTxHash: row.create_tx_hash,
     status: row.status,
     createdAt: row.created_at
   };
@@ -209,8 +210,10 @@ function clubToRow(club) {
     next_draw_at: club.nextDrawAt,
     anonymous_members: Boolean(club.anonymousMembers),
     member_count: Number(club.memberCount || 0),
-    encrypted_tvl_handle: club.encryptedTvlHandle || "ciphertext:empty-total",
-    encrypted_prize_handle: club.encryptedPrizeHandle || "ciphertext:empty-prize",
+    encrypted_tvl_handle: club.encryptedTvlHandle || "encrypted",
+    encrypted_prize_handle: club.encryptedPrizeHandle || "encrypted",
+    contract_club_id: club.contractClubId || null,
+    create_tx_hash: club.createTxHash || null,
     status: club.status || "ACTIVE",
     created_at: club.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString()
@@ -297,6 +300,8 @@ function publicClub(club) {
     memberCount: club.memberCount,
     encryptedTvlHandle: club.encryptedTvlHandle,
     encryptedPrizeHandle: club.encryptedPrizeHandle,
+    contractClubId: club.contractClubId,
+    createTxHash: club.createTxHash,
     status: club.status,
     createdAt: club.createdAt
   };
@@ -326,7 +331,7 @@ function config(_req, res) {
     },
     features: {
       keeper: KEEPER_ENABLED,
-      faucet: true,
+      faucet: false,
       indexer: true,
       supabase: Boolean(supabase)
     },
@@ -343,8 +348,8 @@ async function dashboard(_req, res) {
     .sort((a, b) => a - b)[0];
 
   json(res, 200, {
-    encryptedPrincipal: "ciphertext:user-decrypt",
-    claimableWinnings: "ciphertext:user-decrypt",
+    encryptedPrincipal: "user-decrypt",
+    claimableWinnings: "user-decrypt",
     activePools: activeClubs,
     nextDrawAt: nextDraw ? new Date(nextDraw).toISOString() : null,
     recentDraws: store.draws.slice(-5).reverse(),
@@ -368,30 +373,41 @@ async function createClub(req, res) {
   const body = await readBody(req);
   const name = String(body.name || "").trim();
   const description = String(body.description || "").trim();
+  const txHash = String(body.txHash || "").trim();
+  const contractClubId = String(body.contractClubId || "").trim();
+  const admin = normalizeAddress(body.admin);
+  const keeper = normalizeAddress(body.keeper || body.admin);
 
   if (!name) return badRequest(res, "Club name is required");
+  if (!txHash || !/^0x[a-fA-F0-9]{64}$/.test(txHash)) return badRequest(res, "Confirmed onchain createClub txHash is required");
+  if (!contractClubId || !/^\d+$/.test(contractClubId)) return badRequest(res, "Onchain contractClubId is required");
+  if (!admin) return badRequest(res, "Valid admin wallet address is required");
 
   const club = await updateStore((store) => {
-    const id = `club-${String(store.clubs.length).padStart(2, "0")}-${randomBytes(2).toString("hex")}`;
+    const id = `club-${contractClubId}`;
     const createdAt = new Date().toISOString();
     const drawIntervalMs = Number(body.drawIntervalMs || 604800000);
     const nextDrawAt = new Date(Date.now() + drawIntervalMs).toISOString();
+    const existing = store.clubs.find((item) => item.contractClubId === contractClubId || item.id === id);
+    if (existing) return publicClub(existing);
 
     const nextClub = {
       id,
+      contractClubId,
+      createTxHash: txHash,
       name,
       description,
       scope: "PRIVATE",
-      admin: body.admin || "pending-wallet",
-      keeper: body.keeper || body.admin || "pending-wallet",
+      admin,
+      keeper: keeper || admin,
       inviteCode: createInviteCode(),
       minDeposit: String(body.minDeposit || "1"),
       drawIntervalMs,
       nextDrawAt,
       anonymousMembers: Boolean(body.anonymousMembers ?? true),
       memberCount: 1,
-      encryptedTvlHandle: "ciphertext:empty-total",
-      encryptedPrizeHandle: "ciphertext:empty-prize",
+      encryptedTvlHandle: "encrypted",
+      encryptedPrizeHandle: "encrypted",
       status: "CLUB_CREATED",
       createdAt
     };
@@ -421,16 +437,17 @@ async function joinClub(req, res) {
 
   if (!inviteCode) return badRequest(res, "Invite code is required");
 
-  const club = await updateStore((store) => {
+  const club = await readStore().then((store) => {
     const match = store.clubs.find((item) => item.inviteCode === inviteCode);
     if (!match) return null;
-    match.memberCount += 1;
-    match.status = "MEMBER_JOINED";
     return publicClub(match);
   });
 
   if (!club) return notFound(res);
-  return json(res, 200, { club });
+  return json(res, 200, {
+    club,
+    message: "Invite is valid. Membership is recorded onchain when the user submits an encrypted deposit."
+  });
 }
 
 async function listDraws(_req, res) {
@@ -438,70 +455,15 @@ async function listDraws(_req, res) {
   json(res, 200, { draws: store.draws.slice().reverse() });
 }
 
-async function triggerDraw(req, res) {
-  const body = await readBody(req);
-  const clubId = String(body.clubId || "global");
-
-  const draw = await updateStore((store) => {
-    const club = store.clubs.find((item) => item.id === clubId);
-    if (!club) return null;
-    return createDrawForClub(store, club, body.caller || "manual");
-  });
-
-  if (!draw) return notFound(res);
-  return json(res, 201, { draw });
-}
-
 async function requestFaucet(req, res) {
   const body = await readBody(req);
   const address = normalizeAddress(body.address);
 
   if (!address) return badRequest(res, "Valid wallet address is required");
-
-  const result = await updateStore((store) => {
-    const now = Date.now();
-    const lastClaim = store.faucetClaims[address] || 0;
-    const nextClaimAt = lastClaim + FAUCET_COOLDOWN_MS;
-
-    if (lastClaim && now < nextClaimAt) {
-      return {
-        allowed: false,
-        nextClaimAt: new Date(nextClaimAt).toISOString()
-      };
-    }
-
-    store.faucetClaims[address] = now;
-    return {
-      allowed: true,
-      txHash: `0x${randomBytes(32).toString("hex")}`,
-      amount: "100",
-      token: "cUSDC"
-    };
+  json(res, 410, {
+    allowed: false,
+    message: "Faucet is handled onchain by the frontend through Zama's Sepolia test token mint, approve, and cUSDC wrap flow."
   });
-
-  json(res, result.allowed ? 201 : 429, result);
-}
-
-function createDrawForClub(store, club, source) {
-  const drawNumber = store.draws.length + 1;
-  const createdAt = new Date().toISOString();
-  const draw = {
-    id: `draw-${String(drawNumber).padStart(4, "0")}`,
-    drawNumber,
-    clubId: club.id,
-    clubName: club.name,
-    winner: club.anonymousMembers ? "Hidden winner" : "0xPENDING...WIN",
-    prizeHandle: club.encryptedPrizeHandle || `0xPRIZE...${randomBytes(2).toString("hex").toUpperCase()}`,
-    status: "TRIGGERED",
-    txHash: `0x${randomBytes(32).toString("hex")}`,
-    source,
-    createdAt
-  };
-
-  store.draws.push(draw);
-  club.status = "DRAW_TRIGGERED";
-  club.nextDrawAt = new Date(Date.now() + Number(club.drawIntervalMs || 86400000)).toISOString();
-  return draw;
 }
 
 function createInviteCode() {
@@ -514,24 +476,9 @@ function normalizeAddress(value) {
 }
 
 async function runKeeper() {
-  if (!KEEPER_ENABLED) return;
-
-  setInterval(async () => {
-    try {
-      const triggered = await updateStore((store) => {
-        const now = Date.now();
-        const dueClub = store.clubs.find((club) => new Date(club.nextDrawAt).getTime() <= now);
-        if (!dueClub) return null;
-        return createDrawForClub(store, dueClub, "keeper");
-      });
-
-      if (triggered) {
-        console.log(`[keeper] triggered ${triggered.id} for ${triggered.clubId}`);
-      }
-    } catch (error) {
-      console.error("[keeper] failed", error);
-    }
-  }, KEEPER_INTERVAL_MS);
+  if (KEEPER_ENABLED) {
+    console.warn("[keeper] disabled: backend no longer triggers synthetic draws. Use an onchain keeper service for VeilClubs.triggerDraw.");
+  }
 }
 
 const server = createServer(async (req, res) => {

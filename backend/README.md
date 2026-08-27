@@ -1,6 +1,6 @@
 # Veil Clubs Backend
 
-Small MVP backend for public metadata only. It does not store balances, odds,
+Backend for public metadata only. It does not store balances, odds,
 private winnings, decrypted values, or anything that should remain confidential.
 
 ## Responsibilities
@@ -8,8 +8,8 @@ private winnings, decrypted values, or anything that should remain confidential.
 - expose app config and contract addresses,
 - index public club/draw metadata,
 - manage invite-code UX for private clubs,
-- rate-limit a mock faucet,
-- run a lightweight keeper loop for due draws.
+- validate invite-code UX for private clubs,
+- reject faucet/draw operations that must happen onchain.
 
 ## Run
 
@@ -50,7 +50,6 @@ If Supabase env vars are missing, the server falls back to in-memory/dev storage
 - `POST /api/clubs/:clubId/invites`
 - `POST /api/join`
 - `GET /api/draws`
-- `POST /api/draws/trigger`
 - `POST /api/faucet/request`
 
 Runtime data is stored in Supabase when configured. Fallback local data is ignored by git.

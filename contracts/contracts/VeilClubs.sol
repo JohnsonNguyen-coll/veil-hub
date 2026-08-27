@@ -8,8 +8,7 @@ import {IERC7984} from "@openzeppelin/confidential-contracts/interfaces/IERC7984
 
 /// @title VeilClubs
 /// @notice Confidential no-loss prize pools with one Global Pool and many Private Clubs.
-/// @dev Winner selection executes over encrypted balances using Zama FHE primitives,
-/// ensuring onchain verifiable fairness where only the actual winner can decrypt non-zero prizes.
+/// @dev Draw execution keeps prize allocation encrypted and only lets the selected winner decrypt a non-zero prize.
 contract VeilClubs is Ownable, ZamaEthereumConfig {
     IERC7984 public immutable depositToken;
 
@@ -71,7 +70,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     event MemberJoined(uint256 indexed clubId, address indexed member);
     event EncryptedDeposit(uint256 indexed clubId, address indexed member, euint64 amountHandle);
     event PrincipalWithdrawn(uint256 indexed clubId, address indexed member, euint64 amountHandle);
-    event MockYieldAccrued(uint256 indexed clubId, address indexed source, euint64 amountHandle);
+    event YieldAccrued(uint256 indexed clubId, address indexed source, euint64 amountHandle);
     event DrawTriggered(uint256 indexed clubId, uint256 indexed drawId, euint64 prizeHandle, bytes32 drawCommitment);
     event DrawExecuted(
         uint256 indexed clubId,
@@ -80,7 +79,6 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         bytes32 drawCommitment,
         uint256 memberCount
     );
-    event PrizeClaimPrepared(uint256 indexed clubId, uint256 indexed drawId, address indexed winner, euint64 prizeHandle);
     event PrizeClaimed(uint256 indexed clubId, uint256 indexed drawId, address indexed member, euint64 prizeHandle);
 
     error ClubNotFound(uint256 clubId);
@@ -170,7 +168,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         emit PrincipalWithdrawn(clubId, msg.sender, amount);
     }
 
-    function accrueMockYield(uint256 clubId, externalEuint64 encryptedAmount, bytes calldata inputProof) external {
+    function accrueYield(uint256 clubId, externalEuint64 encryptedAmount, bytes calldata inputProof) external {
         Club storage club = _requireClub(clubId);
         if (msg.sender != club.admin && msg.sender != club.keeper && msg.sender != owner()) {
             revert NotClubAdminOrKeeper(clubId, msg.sender);
@@ -183,12 +181,12 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         club.encryptedYield = FHE.add(club.encryptedYield, received);
         _allowContractOnly(club.encryptedYield);
 
-        emit MockYieldAccrued(clubId, msg.sender, received);
+        emit YieldAccrued(clubId, msg.sender, received);
     }
 
-    /// @notice Executes an onchain verifiable FHE weighted draw over encrypted balances.
-    /// @dev Selects winner in ciphertext without exposing balances or odds. Only the winner
-    /// will be able to decrypt their non-zero prize allocation.
+    /// @notice Executes an onchain verifiable confidential draw.
+    /// @dev Selects a winner in ciphertext without exposing the selected index. Only the winner
+    /// can decrypt their non-zero prize allocation.
     function executeDraw(uint256 clubId, bytes32 drawCommitment) public returns (uint256 drawId, euint64 prize) {
         Club storage club = _requireClub(clubId);
         if (msg.sender != club.admin && msg.sender != club.keeper && msg.sender != owner()) {
@@ -244,20 +242,6 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
 
         _allowUserAndContract(prize, msg.sender);
         emit PrizeClaimed(clubId, drawId, msg.sender, prize);
-    }
-
-    /// @notice Demo/manual hook retained for testing edge cases.
-    function preparePrizeClaim(uint256 clubId, uint256 drawId, address winner, euint64 prize) external {
-        Club storage club = _requireClub(clubId);
-        if (msg.sender != club.admin && msg.sender != club.keeper && msg.sender != owner()) {
-            revert NotClubAdminOrKeeper(clubId, msg.sender);
-        }
-
-        FHE.allowTransient(prize, address(depositToken));
-        depositToken.confidentialTransfer(winner, prize);
-        FHE.allow(prize, winner);
-
-        emit PrizeClaimPrepared(clubId, drawId, winner, prize);
     }
 
     function clubView(uint256 clubId) external view returns (ClubView memory view_) {

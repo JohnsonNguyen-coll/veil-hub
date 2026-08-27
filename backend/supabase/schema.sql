@@ -1,5 +1,7 @@
 create table if not exists public.veil_clubs (
   id text primary key,
+  contract_club_id text unique,
+  create_tx_hash text,
   name text not null,
   description text not null default '',
   scope text not null check (scope in ('PUBLIC', 'PRIVATE')),
@@ -26,7 +28,7 @@ create table if not exists public.veil_draws (
   winner text not null,
   prize_handle text not null,
   status text not null,
-  tx_hash text not null,
+  tx_hash text,
   source text not null,
   created_at timestamptz not null default now()
 );

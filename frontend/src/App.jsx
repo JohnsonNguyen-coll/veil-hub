@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, usePublicClient, useWriteContract } from "wagmi";
+import { useAccount, usePublicClient, useWalletClient, useWriteContract } from "wagmi";
+import { decodeEventLog, formatUnits, parseUnits, toHex } from "viem";
 import * as THREE from "three";
 import {
   VEIL_CLUBS_ADDRESS,
   VEIL_TOKEN_ADDRESS,
   VEIL_UNDERLYING_TOKEN_ADDRESS,
   VeilClubsABI,
+  VeilTokenABI,
   IS_CONTRACT_CONFIGURED,
   IS_TOKEN_CONFIGURED,
   BACKEND_URL
@@ -17,7 +19,8 @@ const defaultPools = [
     id: "global",
     name: "Global Pool",
     scope: "PUBLIC",
-    tvl: "ciphertext:empty-total",
+    contractId: "0",
+    tvl: "encrypted",
     members: "0",
     draw: "24H 00M",
     prize: "•••••• USDC",
@@ -243,19 +246,19 @@ const landingAdvantages = [
   ["Private Capital", "Deposits and odds remain encrypted via FHEVM on-chain keys."],
   ["No-Loss Exit", "Withdraw 100% of your principal anytime. Yield funds the prize."],
   ["Social Pools", "Private Clubs enable group prize pools without bankroll exposure."],
-  ["Instant Demo", "Seamless flow from wallet connect to confidential yield claim."]
+  ["Onchain Flow", "Wallet actions are only acknowledged after Sepolia transaction receipts."]
 ];
 
 const landingPoolModes = [
   {
     label: "GLOBAL POOL",
     title: "OPEN POOL FOR FIRST-TIME USERS",
-    body: "A public pool that keeps onboarding simple. Anyone can enter, deposit privately, watch the next draw, and test the no-loss loop without needing an invite.",
+    body: "A public pool that keeps onboarding simple. Anyone can enter, deposit privately, watch the next draw, and use the no-loss loop without needing an invite.",
     points: [
       "OPEN ACCESS",
       "SHARED PUBLIC DRAW HISTORY",
       "ENCRYPTED USER BALANCES",
-      "FAST JUDGE-FRIENDLY DEMO"
+      "ONCHAIN ENTRY FLOW"
     ]
   },
   {
@@ -289,7 +292,7 @@ const landingBriefs = [
     eyebrow: "01 / Product",
     title: "Global Pool + Private Clubs",
     body: "Veil Clubs is a confidential no-loss prize pool. New users can enter the public Global Pool, while groups can create invitation-only clubs with independent deposits, yield, and draws.",
-    bullets: ["Public onboarding pool", "Invite-based private clubs", "No-loss principal withdrawals", "Mock yield prize source"]
+    bullets: ["Public onboarding pool", "Invite-based private clubs", "No-loss principal withdrawals", "Encrypted prize source"]
   },
   {
     eyebrow: "02 / Privacy",
@@ -299,14 +302,14 @@ const landingBriefs = [
   },
   {
     eyebrow: "03 / Draws",
-    title: "Confidential Weighted Prize Draws",
-    body: "The target draw design selects winners from encrypted balances without decrypting member deposits. The MVP documents public leakage and separates demo hooks from the final FHE selector.",
-    bullets: ["Weighted by encrypted principal", "No plaintext balance selection", "Keeper/admin trigger path", "Gas limits documented"]
+    title: "Confidential Prize Draws",
+    body: "The draw executes onchain over confidential pool state and allocates encrypted prizes without exposing plaintext member balances.",
+    bullets: ["Encrypted prize allocation", "No plaintext balance selection", "Keeper/admin trigger path", "Gas limits documented"]
   },
   {
     eyebrow: "04 / Stack",
     title: "Privacy-First Infrastructure",
-    body: "The system is split so sensitive financial state stays encrypted while the interface remains fast, readable, and easy to demo. Public metadata is separated from confidential pool state.",
+    body: "The system is split so sensitive financial state stays encrypted while the interface remains fast, readable, and transaction-honest. Public metadata is separated from confidential pool state.",
     bullets: ["Encrypted pool accounting", "Wallet-based access", "Public event history", "Keeper-ready draw flow"]
   }
 ];
@@ -345,12 +348,12 @@ const docsTopics = [
       },
       {
         title: "Product Shape",
-        body: "The product intentionally has two surfaces: a Global Pool for public onboarding and Private Clubs for small social groups. This keeps the MVP focused, demoable, and easier to reason about under confidential-computation constraints."
+        body: "The product intentionally has two surfaces: a Global Pool for public onboarding and Private Clubs for small social groups. This keeps the app focused and easier to reason about under confidential-computation constraints."
       }
     ],
     rows: [
       ["Primary user", "People who want no-loss prize exposure without public balance disclosure"],
-      ["Primary demo", "Join Global Pool, deposit encrypted amount, view private position, trigger draw"],
+      ["Primary flow", "Join Global Pool, deposit encrypted amount, view private position, trigger draw"],
       ["Social layer", "Create a club, share invite, run independent club draws"],
       ["No-loss rule", "Principal can be withdrawn; prizes are funded from yield"]
     ]
@@ -387,7 +390,7 @@ const docsTopics = [
     eyebrow: "03 / Flow",
     title: "User Journey",
     summary: "A complete route from wallet connection to deposit, draw, decrypt, claim, and withdraw.",
-    status: "DEMO_PATH",
+    status: "ONCHAIN_PATH",
     sections: [
       {
         title: "Connect And Choose Pool",
@@ -399,7 +402,7 @@ const docsTopics = [
       },
       {
         title: "Draw And Claim",
-        body: "At the scheduled time, a keeper or admin triggers a draw. The target design selects winners with encrypted weights. Prize amount remains confidential. The winner can decrypt their own claimable prize and claim it without exposing private balances."
+        body: "At the scheduled time, a keeper or admin triggers a draw. Prize amount remains confidential. The winner can decrypt their own claimable prize and claim it without exposing private balances."
       },
       {
         title: "Exit",
@@ -434,16 +437,16 @@ const docsTopics = [
     slug: "prize-draw",
     eyebrow: "05 / Draws",
     title: "Confidential Prize Draw",
-    summary: "The hardest technical part: fair weighted selection using encrypted balances.",
+    summary: "The hardest technical part: fair selection while sensitive balances stay encrypted.",
     status: "CORE_MECHANISM",
     sections: [
       {
         title: "Goal",
-        body: "The draw should select a winner with probability proportional to their encrypted principal, without decrypting individual balances or revealing odds. This is the core technical claim of Veil Clubs and should be implemented and documented carefully."
+        body: "The draw should select winners without decrypting individual balances or revealing odds. Any weighted-by-principal claim must remain out of the product until the encrypted weighted selector is implemented and gas-profiled."
       },
       {
-        title: "MVP Path",
-        body: "The MVP can expose the draw lifecycle and encrypted prize transfer while marking any demo finalization hook as non-final. This is better than pretending a shortcut is already the confidential weighted selector."
+        title: "Current Path",
+        body: "The current contract exposes the draw lifecycle and encrypted prize transfer without a manual prize hook or synthetic finalization path."
       },
       {
         title: "Scalability Plan",
@@ -455,34 +458,34 @@ const docsTopics = [
       }
     ],
     rows: [
-      ["Weight", "Encrypted user principal"],
+      ["Selection", "Onchain confidential draw"],
       ["Randomness", "Onchain confidential randomness target"],
       ["Output", "Winner event plus encrypted prize handle"],
-      ["Limit", "Gas-profile before scaling beyond MVP member cap"]
+      ["Limit", "Gas-profile before scaling beyond member cap"]
     ]
   },
   {
-    slug: "mvp-boundaries",
+    slug: "production-boundaries",
     eyebrow: "06 / Limits",
-    title: "MVP Boundaries",
-    summary: "What is demo-ready now and what must be hardened before production claims.",
+    title: "Production Boundaries",
+    summary: "What is live onchain now and what must be hardened before production claims.",
     status: "HONEST_LIMITS",
     sections: [
       {
-        title: "Demo-Ready",
-        body: "The current product can demonstrate the landing page, app routes, Global Pool, Private Clubs, draw history, account dashboard, backend metadata, invite code flow, and initial confidential contract structure."
+        title: "Onchain-Ready",
+        body: "The current product sends wallet-confirmed Sepolia transactions and uses Zama encrypted inputs for confidential deposits."
       },
       {
         title: "Must Be Hardened",
-        body: "The fully weighted FHE draw kernel, production yield adapter, event indexer, keeper reliability, and contract tests need more work before this can be presented as production-ready."
+        body: "A production yield adapter, event indexer, keeper reliability, weighted confidential selection, and broader contract tests need more work before this can be presented as production-ready."
       },
       {
         title: "Judging Strategy",
-        body: "The best judging position is to be precise: show the product, explain the intended confidential draw design, demonstrate the parts that work, and clearly mark the remaining engineering work."
+        body: "The best judging position is to be precise: show the product, explain the confidential draw design, and clearly mark remaining engineering work without synthetic success paths."
       }
     ],
     rows: [
-      ["Ready", "UI, routes, metadata API, club UX, contract scaffold"],
+      ["Ready", "UI, routes, metadata API, club UX, encrypted deposit flow"],
       ["Risk", "Weighted encrypted winner selection cost"],
       ["Next", "Gas profiling, tests, event sync, audited yield adapter"],
       ["Messaging", "Do not overclaim final draw fairness until kernel is complete"]
@@ -574,7 +577,7 @@ function LandingPage({ goApp, goGlobal, goDocs }) {
         </LandingSection>
 
         <LandingSection
-          body="The product has only two pool surfaces, so the demo stays focused while still showing a real social use case."
+          body="The product has only two pool surfaces, keeping the app focused while still showing a real social use case."
           eyebrow="Pool Modes"
           layout="split"
           title="ONE PUBLIC DOOR, INFINITE PRIVATE TABLES"
@@ -977,7 +980,7 @@ function PrivacySimulationWidget() {
                   ? "1 in 4.2 (23.8% Share)"
                   : isDecrypted
                   ? "1 in 4.2 (Owner Decrypted)"
-                  : "0xPRIZE...7D31"}
+                  : "encrypted"}
               </span>
               <span className="text-[11px] block opacity-60 mt-1">
                 {mode === "public" ? "Calculated by public bots" : "Zero-Knowledge Masked"}
@@ -1108,7 +1111,7 @@ function DocsPage({ docsSection, navigate }) {
             Product Notes
           </h1>
           <p className="font-body-md text-body-md text-veil-white opacity-75 max-w-3xl text-lg mt-5">
-            Choose a topic to inspect the product, privacy model, draw mechanism, and MVP boundaries in detail.
+            Choose a topic to inspect the product, privacy model, draw mechanism, and production boundaries in detail.
           </p>
         </section>
 
@@ -1121,7 +1124,7 @@ function DocsPage({ docsSection, navigate }) {
         <LandingSection
           eyebrow="Reading Order"
           title="Recommended Path"
-          body="Start with the product overview, then inspect product surfaces, privacy model, and prize draw mechanics before reviewing MVP boundaries."
+          body="Start with the product overview, then inspect product surfaces, privacy model, and prize draw mechanics before reviewing production boundaries."
         >
           <div className="border border-veil-gray-light">
             {docsTopics.map((item, index) => (
@@ -1360,7 +1363,70 @@ function ToastNotification({ toast, onClose }) {
 
 const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
 const FAUCET_UNDERLYING_AMOUNT = 100_000_000n;
-const MOCK_ERC20_ABI = [
+const TOKEN_DECIMALS = 6;
+const MAX_EUINT64 = (1n << 64n) - 1n;
+const DEFAULT_SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
+let fheSdkInitPromise;
+let fheInstancePromise;
+
+async function getFheInstance() {
+  const { initSDK, createInstance, SepoliaConfig } = await import("@zama-fhe/relayer-sdk/web");
+  fheSdkInitPromise ||= initSDK();
+  await fheSdkInitPromise;
+  fheInstancePromise ||= createInstance({
+    ...SepoliaConfig,
+    network: import.meta.env.VITE_SEPOLIA_RPC_URL || DEFAULT_SEPOLIA_RPC
+  });
+  return fheInstancePromise;
+}
+
+function parseTokenAmount(amount) {
+  const units = parseUnits(String(amount).trim(), TOKEN_DECIMALS);
+  if (units <= 0n) throw new Error("Amount must be greater than 0.");
+  if (units > MAX_EUINT64) throw new Error("Amount is too large for euint64.");
+  return units;
+}
+
+async function encryptUint64Input(contractAddress, userAddress, amount) {
+  const instance = await getFheInstance();
+  const encrypted = await instance.createEncryptedInput(contractAddress, userAddress).add64(amount).encrypt();
+  return {
+    handle: toHex(encrypted.handles[0]),
+    inputProof: toHex(encrypted.inputProof)
+  };
+}
+
+async function userDecryptUint64({ handle, contractAddress, userAddress, walletClient }) {
+  const instance = await getFheInstance();
+  const keypair = instance.generateKeypair();
+  const startTimestamp = Math.floor(Date.now() / 1000);
+  const durationDays = 1;
+  const contractAddresses = [contractAddress];
+  const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays);
+  const types = {
+    UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification
+  };
+  const signature = await walletClient.signTypedData({
+    account: userAddress,
+    domain: eip712.domain,
+    types,
+    primaryType: "UserDecryptRequestVerification",
+    message: eip712.message
+  });
+  const result = await instance.userDecrypt(
+    [{ handle, contractAddress }],
+    keypair.privateKey,
+    keypair.publicKey,
+    signature.replace("0x", ""),
+    contractAddresses,
+    userAddress,
+    startTimestamp,
+    durationDays
+  );
+  return BigInt(result[handle] ?? result[handle.toLowerCase()] ?? 0);
+}
+
+const TEST_ERC20_ABI = [
   {
     inputs: [
       { internalType: "address", name: "to", type: "address" },
@@ -1396,9 +1462,37 @@ const CONFIDENTIAL_WRAPPER_ABI = [
 ];
 
 function isUserRejectedRequest(error) {
-  const code = error?.code || error?.cause?.code;
-  const message = `${error?.shortMessage || ""} ${error?.message || ""} ${error?.cause?.message || ""}`.toLowerCase();
-  return code === 4001 || code === "ACTION_REJECTED" || message.includes("user rejected") || message.includes("user denied") || message.includes("rejected the request");
+  const seen = new Set();
+  const stack = [error];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || seen.has(current)) continue;
+    seen.add(current);
+
+    const code = current.code;
+    const message = `${current.shortMessage || ""} ${current.message || ""}`.toLowerCase();
+    if (
+      code === 4001 ||
+      code === "ACTION_REJECTED" ||
+      message.includes("user rejected") ||
+      message.includes("user denied") ||
+      message.includes("rejected the request") ||
+      message.includes("rejected request") ||
+      message.includes("request rejected") ||
+      message.includes("user cancelled") ||
+      message.includes("user canceled")
+    ) {
+      return true;
+    }
+
+    stack.push(current.cause);
+    if (Array.isArray(current.details)) {
+      stack.push(...current.details);
+    }
+  }
+
+  return false;
 }
 
 function txErrorMessage(error, fallback = "Transaction failed. Please try again.") {
@@ -1411,6 +1505,7 @@ function txErrorMessage(error, fallback = "Transaction failed. Please try again.
 function AppWorkspace({ activePage, navigatePage, onFaucet }) {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
   const { writeContractAsync } = useWriteContract();
 
   const [toast, setToast] = useState(null);
@@ -1426,6 +1521,10 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     window.setTimeout(() => setToast(null), 8000);
   };
 
+  const getDisplayBalance = (value) => Number(value || 0).toLocaleString(undefined, {
+    maximumFractionDigits: 6
+  });
+
   const submitContractTx = async ({ signingTitle, signingMessage, confirmedTitle, confirmedMessage, ...request }) => {
     showToast(signingTitle, signingMessage);
     const txHash = await writeContractAsync(request);
@@ -1437,7 +1536,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     showToast("Transaction Submitted", "Waiting for Sepolia confirmation...", txHash);
 
     if (!publicClient) {
-      return txHash;
+      return { txHash, receipt: null };
     }
 
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
@@ -1446,77 +1545,55 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     }
 
     showToast(confirmedTitle, confirmedMessage, txHash);
-    return txHash;
+    return { txHash, receipt };
   };
 
   const handleFaucet = async () => {
-    const targetAddr = address || "0x7C2100000000000000000000000000000000BEEF";
+    if (!isConnected || !address) {
+      showToast("Wallet Required", "Connect your Sepolia wallet before requesting cUSDC.");
+      return;
+    }
 
-    if (isConnected) {
-      if (!IS_TOKEN_CONFIGURED) {
-        showToast("Faucet Not Configured", "Missing VITE_VEIL_TOKEN_ADDRESS. Faucet cannot mint onchain cUSDC yet.");
-        return;
-      }
-
-      try {
-        await submitContractTx({
-          signingTitle: "Faucet Step 1/3",
-          signingMessage: "Mint 100 Sepolia USDC mock from Zama's official test underlying token.",
-          confirmedTitle: "Underlying Minted",
-          confirmedMessage: "Minted 100 Sepolia USDC mock. Next: approve the confidential wrapper.",
-          address: VEIL_UNDERLYING_TOKEN_ADDRESS,
-          abi: MOCK_ERC20_ABI,
-          functionName: "mint",
-          args: [targetAddr, FAUCET_UNDERLYING_AMOUNT]
-        });
-        await submitContractTx({
-          signingTitle: "Faucet Step 2/3",
-          signingMessage: "Approve Zama's cUSDCMock wrapper to wrap your 100 mock USDC.",
-          confirmedTitle: "Wrapper Approved",
-          confirmedMessage: "Approved wrapper. Next: wrap into confidential cUSDC.",
-          address: VEIL_UNDERLYING_TOKEN_ADDRESS,
-          abi: MOCK_ERC20_ABI,
-          functionName: "approve",
-          args: [VEIL_TOKEN_ADDRESS, FAUCET_UNDERLYING_AMOUNT]
-        });
-        await submitContractTx({
-          signingTitle: "Faucet Step 3/3",
-          signingMessage: "Wrap 100 mock USDC into official Zama cUSDCMock.",
-          confirmedTitle: "Faucet Confirmed",
-          confirmedMessage: "Wrapped 100 mock USDC into confidential cUSDCMock on Sepolia.",
-          address: VEIL_TOKEN_ADDRESS,
-          abi: CONFIDENTIAL_WRAPPER_ABI,
-          functionName: "wrap",
-          args: [targetAddr, FAUCET_UNDERLYING_AMOUNT]
-        });
-        setWalletBalance((prev) => prev + 100);
-      } catch (err) {
-        console.warn("Onchain faucet failed:", err);
-        showToast(isUserRejectedRequest(err) ? "Faucet Cancelled" : "Faucet Failed", txErrorMessage(err, "Failed to mint faucet tokens."));
-      }
+    if (!IS_TOKEN_CONFIGURED) {
+      showToast("Faucet Not Configured", "Missing VITE_VEIL_TOKEN_ADDRESS. Faucet cannot mint onchain cUSDC yet.");
       return;
     }
 
     try {
-      const res = await fetch(`${BACKEND_URL}/api/faucet/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: targetAddr })
+      await submitContractTx({
+        signingTitle: "Faucet Step 1/3",
+        signingMessage: "Mint 100 Sepolia USDC test tokens from Zama's official underlying token.",
+        confirmedTitle: "Underlying Minted",
+        confirmedMessage: "Minted 100 Sepolia USDC. Next: approve the confidential wrapper.",
+        address: VEIL_UNDERLYING_TOKEN_ADDRESS,
+        abi: TEST_ERC20_ABI,
+        functionName: "mint",
+        args: [address, FAUCET_UNDERLYING_AMOUNT]
       });
-      const data = await res.json();
-      if (res.ok && data.allowed) {
-        setWalletBalance((prev) => prev + 100);
-        showToast(
-          "Demo Faucet Added",
-          "Added 100 demo cUSDC locally. Connect a wallet to mint real faucet tokens.",
-          data.txHash
-        );
-      } else {
-        showToast("Faucet Notice", data.message || "Cooldown active: 24h limit per wallet address.");
-      }
+      await submitContractTx({
+        signingTitle: "Faucet Step 2/3",
+        signingMessage: "Approve Zama's cUSDC wrapper to wrap your 100 USDC.",
+        confirmedTitle: "Wrapper Approved",
+        confirmedMessage: "Approved wrapper. Next: wrap into confidential cUSDC.",
+        address: VEIL_UNDERLYING_TOKEN_ADDRESS,
+        abi: TEST_ERC20_ABI,
+        functionName: "approve",
+        args: [VEIL_TOKEN_ADDRESS, FAUCET_UNDERLYING_AMOUNT]
+      });
+      await submitContractTx({
+        signingTitle: "Faucet Step 3/3",
+        signingMessage: "Wrap 100 USDC into official Zama cUSDC.",
+        confirmedTitle: "Faucet Confirmed",
+        confirmedMessage: "Wrapped 100 USDC into confidential cUSDC on Sepolia.",
+        address: VEIL_TOKEN_ADDRESS,
+        abi: CONFIDENTIAL_WRAPPER_ABI,
+        functionName: "wrap",
+        args: [address, FAUCET_UNDERLYING_AMOUNT]
+      });
+      setIsDecrypted(false);
     } catch (err) {
-      setWalletBalance((prev) => prev + 100);
-      showToast("Demo Faucet Added", "Backend unavailable, so 100 demo cUSDC was added locally.");
+      console.warn("Onchain faucet failed:", err);
+      showToast(isUserRejectedRequest(err) ? "Faucet Cancelled" : "Faucet Failed", txErrorMessage(err, "Failed to mint faucet tokens."));
     }
   };
 
@@ -1536,7 +1613,8 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
                 id: c.id,
                 name: c.name,
                 scope: c.scope,
-                tvl: c.encryptedTvlHandle || "ciphertext:empty-total",
+                contractId: c.contractClubId ?? c.contractId ?? (c.id === "global" ? "0" : null),
+                tvl: c.encryptedTvlHandle || "encrypted",
                 members: String(c.memberCount ?? 0),
                 draw: c.nextDrawAt ? new Date(c.nextDrawAt).toLocaleString() : "24H 00M",
                 prize: "•••••• USDC",
@@ -1553,7 +1631,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
                 `#${String(d.drawNumber || d.id).padStart(4, "0")}`,
                 d.clubName || "Global Pool",
                 d.winner || "Hidden winner",
-                d.prizeHandle || "0xPRIZE...",
+                d.prizeHandle || "encrypted",
                 d.status || "SETTLED"
               ])
             );
@@ -1569,32 +1647,50 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     };
   }, []);
 
-  const handleDeposit = async (amount, poolName = "Global Pool") => {
-    const num = parseFloat(amount) || 100;
-    const isLiveOnchain = isConnected && IS_CONTRACT_CONFIGURED;
-
-    if (Number.isNaN(num) || num <= 0) {
-      showToast("Invalid Amount", "Enter a deposit amount greater than 0.");
+  const handleDeposit = async (amount, poolName = "Global Pool", clubId = 0n) => {
+    if (!isConnected || !address) {
+      showToast("Wallet Required", "Connect your Sepolia wallet before depositing.");
       return;
     }
 
-    if (isLiveOnchain) {
-      showToast(
-        "Deposit Not Ready",
-        "Onchain deposit requires a real FHE encrypted input and proof. The app will not send a fake createClub transaction."
-      );
+    if (!IS_CONTRACT_CONFIGURED) {
+      showToast("Deposit Not Configured", "Missing VITE_VEIL_CLUBS_ADDRESS. Deploy VeilClubs before depositing.");
       return;
     }
 
-    setUserDeposit((prev) => prev + num);
-    setWalletBalance((prev) => Math.max(0, prev - num));
-    showToast(
-      "Demo Deposit Added",
-      `Added ${num} demo cUSDC to ${poolName}. Connect configured contracts after FHE input generation is enabled.`
-    );
+    try {
+      const units = parseTokenAmount(amount || "100");
+      showToast("Encrypting Deposit", `Creating a real Zama encrypted input proof for ${poolName}.`);
+      const encrypted = await encryptUint64Input(VEIL_CLUBS_ADDRESS, address, units);
+      await submitContractTx({
+        signingTitle: "Depositing",
+        signingMessage: "Confirm the encrypted cUSDC deposit transaction in your wallet.",
+        confirmedTitle: "Deposit Confirmed",
+        confirmedMessage: `Encrypted cUSDC deposit confirmed for ${poolName}.`,
+        address: VEIL_CLUBS_ADDRESS,
+        abi: VeilClubsABI,
+        functionName: "deposit",
+        args: [BigInt(clubId), encrypted.handle, encrypted.inputProof]
+      });
+      setUserDeposit((prev) => prev + Number(formatUnits(units, TOKEN_DECIMALS)));
+      setIsDecrypted(false);
+    } catch (err) {
+      console.warn("Encrypted deposit failed:", err);
+      showToast(isUserRejectedRequest(err) ? "Deposit Cancelled" : "Deposit Failed", txErrorMessage(err, "Failed to submit encrypted deposit."));
+    }
   };
 
   const handleTriggerDraw = async (poolName = "Global Pool") => {
+    if (!isConnected || !address) {
+      showToast("Wallet Required", "Connect your Sepolia wallet before triggering a draw.");
+      return;
+    }
+
+    if (!IS_CONTRACT_CONFIGURED) {
+      showToast("Draw Not Configured", "Missing VITE_VEIL_CLUBS_ADDRESS. Deploy VeilClubs before triggering draws.");
+      return;
+    }
+
     if (isConnected && IS_CONTRACT_CONFIGURED) {
       try {
         await submitContractTx({
@@ -1612,55 +1708,78 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
       }
       return;
     }
-
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/draws/trigger`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clubId: "global" })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const d = data.draw;
-        const newDrawRow = [
-          `#${String(d.drawNumber).padStart(4, "0")}`,
-          d.clubName || poolName,
-          d.winner || "Verifiable Encrypted Winner",
-          d.prizeHandle || "0xPRIZE...",
-          d.status || "TRIGGERED"
-        ];
-        setDrawsState((prev) => [newDrawRow, ...prev]);
-        showToast(
-          "Demo Draw Executed",
-          `Created a demo draw for ${poolName}. Connect configured contracts to execute onchain.`,
-          d.txHash
-        );
-        return;
-      }
-    } catch (e) {
-      // local state fallback
-    }
-
-    const nextDrawNum = `#00${drawsState.length + 1}`;
-    const newDraw = [nextDrawNum, poolName, "Verifiable Encrypted Winner", "0xPRIZE...", "CLAIMABLE"];
-    setDrawsState((prev) => [newDraw, ...prev]);
-    showToast(
-      "Demo Draw Executed",
-      `Created demo draw ${nextDrawNum} for ${poolName}. Connect configured contracts to execute onchain.`
-    );
   };
 
   const handleDecrypt = async () => {
-    showToast("EIP-712 KMS Decrypt", "Decryption request signed. Retrieving private balance handles from Zama KMS...");
-    window.setTimeout(() => {
+    if (!isConnected || !address) {
+      showToast("Wallet Required", "Connect your Sepolia wallet before decrypting balances.");
+      return;
+    }
+
+    if (!walletClient || !publicClient) {
+      showToast("Wallet Not Ready", "Wallet client is not ready for EIP-712 user decryption.");
+      return;
+    }
+
+    try {
+      showToast("Reading Handles", "Reading confidential balance handles from Sepolia.");
+      const walletHandle = await publicClient.readContract({
+        address: VEIL_TOKEN_ADDRESS,
+        abi: VeilTokenABI,
+        functionName: "confidentialBalanceOf",
+        args: [address],
+        account: address
+      });
+      const principalHandle = IS_CONTRACT_CONFIGURED
+        ? await publicClient.readContract({
+            address: VEIL_CLUBS_ADDRESS,
+            abi: VeilClubsABI,
+            functionName: "encryptedPrincipalOf",
+            args: [0n, address],
+            account: address
+          })
+        : null;
+
+      showToast("Decrypt Request", "Sign the EIP-712 request to decrypt only your own allowed handles.");
+      const decryptedWallet = await userDecryptUint64({
+        handle: walletHandle,
+        contractAddress: VEIL_TOKEN_ADDRESS,
+        userAddress: address,
+        walletClient
+      });
+      const decryptedPrincipal = principalHandle
+        ? await userDecryptUint64({
+            handle: principalHandle,
+            contractAddress: VEIL_CLUBS_ADDRESS,
+            userAddress: address,
+            walletClient
+          })
+        : 0n;
+
+      setWalletBalance(Number(formatUnits(decryptedWallet, TOKEN_DECIMALS)));
+      setUserDeposit(Number(formatUnits(decryptedPrincipal, TOKEN_DECIMALS)));
       setIsDecrypted(true);
-      showToast("Decrypted Successfully", `Principal: ${userDeposit}.00 USDC | Claimable: ${isClaimed ? "0.00" : "0.00"} USDC`);
-    }, 600);
+      showToast(
+        "Decrypted",
+        `Wallet: ${formatUnits(decryptedWallet, TOKEN_DECIMALS)} cUSDC | Principal: ${formatUnits(decryptedPrincipal, TOKEN_DECIMALS)} cUSDC`
+      );
+    } catch (err) {
+      console.warn("User decrypt failed:", err);
+      showToast(isUserRejectedRequest(err) ? "Decrypt Cancelled" : "Decrypt Failed", txErrorMessage(err, "Failed to decrypt your confidential balances."));
+    }
   };
 
   const handleClaim = async () => {
     if (isClaimed) {
       showToast("Already Claimed", "You have already claimed all pending prizes for this draw.");
+      return;
+    }
+    if (!isConnected || !address) {
+      showToast("Wallet Required", "Connect your Sepolia wallet before claiming prizes.");
+      return;
+    }
+    if (!IS_CONTRACT_CONFIGURED) {
+      showToast("Claim Not Configured", "Missing VITE_VEIL_CLUBS_ADDRESS. Deploy VeilClubs before claiming.");
       return;
     }
     if (isConnected && IS_CONTRACT_CONFIGURED) {
@@ -1679,15 +1798,16 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
       } catch (err) {
         showToast(isUserRejectedRequest(err) ? "Claim Cancelled" : "Claim Error", txErrorMessage(err, "Failed to claim prize."));
       }
-    } else {
-      setIsClaimed(true);
-      showToast("Prize Claimed", "Transferred prize into your confidential token wallet!");
     }
   };
 
   const handleWithdraw = async () => {
-    if (userDeposit <= 0) {
-      showToast("No Principal", "Current confidential principal balance is 0.");
+    if (!isConnected || !address) {
+      showToast("Wallet Required", "Connect your Sepolia wallet before withdrawing.");
+      return;
+    }
+    if (!IS_CONTRACT_CONFIGURED) {
+      showToast("Withdraw Not Configured", "Missing VITE_VEIL_CLUBS_ADDRESS. Deploy VeilClubs before withdrawing.");
       return;
     }
     if (isConnected && IS_CONTRACT_CONFIGURED) {
@@ -1703,21 +1823,26 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
           args: [0n]
         });
         setUserDeposit(0);
+        setIsDecrypted(false);
       } catch (err) {
         showToast(isUserRejectedRequest(err) ? "Withdraw Cancelled" : "Withdraw Error", txErrorMessage(err, "Failed to withdraw."));
       }
-    } else {
-      const amt = userDeposit;
-      setUserDeposit(0);
-      setWalletBalance((prev) => prev + amt);
-      showToast("Principal Withdrawn", `Withdrew ${amt}.00 USDC principal without loss to your wallet.`);
     }
   };
 
   const handleCreateClub = async (name) => {
+    if (!isConnected || !address) {
+      showToast("Wallet Required", "Connect your Sepolia wallet before creating a club.");
+      return;
+    }
+    if (!IS_CONTRACT_CONFIGURED) {
+      showToast("Create Not Configured", "Missing VITE_VEIL_CLUBS_ADDRESS. Deploy VeilClubs before creating clubs.");
+      return;
+    }
+
     if (isConnected && IS_CONTRACT_CONFIGURED) {
       try {
-        await submitContractTx({
+        const { txHash, receipt } = await submitContractTx({
           signingTitle: "Creating Club",
           signingMessage: "Confirm the private club creation transaction in your wallet.",
           confirmedTitle: "Club Created Onchain",
@@ -1727,54 +1852,66 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
           functionName: "createClub",
           args: [name || "Private Club", "Confidential Club", 25n, 604800n, true]
         });
-      } catch (err) {
-        showToast(isUserRejectedRequest(err) ? "Create Cancelled" : "Create Failed", txErrorMessage(err, "Failed to create club."));
-        return;
-      }
-    }
+        const clubCreatedLog = receipt?.logs
+          ?.map((log) => {
+            try {
+              return decodeEventLog({ abi: VeilClubsABI, data: log.data, topics: log.topics });
+            } catch {
+              return null;
+            }
+          })
+          .find((log) => log?.eventName === "ClubCreated");
+        const contractClubId = clubCreatedLog?.args?.clubId?.toString();
+        if (!contractClubId) {
+          showToast("Club Created Onchain", "Club tx confirmed, but the ClubCreated event was not found. Refresh the indexer before adding metadata.");
+          return;
+        }
 
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/clubs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name || "Encrypted Club", scope: "PRIVATE" })
-      });
-      if (res.ok) {
+        const res = await fetch(`${BACKEND_URL}/api/clubs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name || "Encrypted Club",
+            scope: "PRIVATE",
+            admin: address,
+            keeper: address,
+            txHash,
+            contractClubId
+          })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.message || "Backend rejected club metadata.");
+        }
         const data = await res.json();
         const created = data.club;
         const newClub = {
           id: created.id,
+          contractId: created.contractClubId,
           name: created.name,
           scope: created.scope,
-          tvl: created.encryptedTvlHandle || "ciphertext:empty-total",
+          tvl: created.encryptedTvlHandle || "encrypted",
           members: String(created.memberCount || 1),
           draw: "07D 00H",
           prize: "•••••• USDC",
           status: created.status || "ACTIVE"
         };
         setPoolsState((prev) => [...prev, newClub]);
-        showToast("Private Club Created", `Created "${newClub.name}" with independent FHE draw lifecycle.`);
+        showToast("Private Club Synced", `Created "${newClub.name}" onchain and synced public metadata.`, txHash);
+        return;
+      } catch (err) {
+        showToast(isUserRejectedRequest(err) ? "Create Cancelled" : "Create Failed", txErrorMessage(err, "Failed to create club."));
         return;
       }
-    } catch (e) {
-      // local fallback
     }
-
-    const newClub = {
-      id: `club-0${poolsState.length}`,
-      name: name || "Encrypted Club",
-      scope: "PRIVATE",
-      tvl: "ciphertext:empty-total",
-      members: "1",
-      draw: "07D 00H",
-      prize: "•••••• USDC",
-      status: "YIELD_ACCRUING"
-    };
-    setPoolsState((prev) => [...prev, newClub]);
-    showToast("Private Club Created", `Created "${newClub.name}" with independent FHE draw lifecycle.`);
   };
 
   const handleJoinClub = async (inviteCode) => {
+    if (!isConnected || !address) {
+      showToast("Wallet Required", "Connect your Sepolia wallet before joining a club.");
+      return;
+    }
+
     try {
       const res = await fetch(`${BACKEND_URL}/api/join`, {
         method: "POST",
@@ -1786,8 +1923,10 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
         showToast("Joined Club", `Joined ${data.club.name} via invite ${inviteCode}.`);
         return;
       }
-    } catch (e) {}
-    showToast("Joined Club", `Validated invite ${inviteCode || "VC-CLUB"}. Added to private membership roster.`);
+      showToast("Invite Invalid", "Invite code was not accepted by the backend.");
+    } catch (e) {
+      showToast("Join Failed", "Could not validate invite code with the backend.");
+    }
   };
 
   return (
@@ -1803,12 +1942,16 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onDecrypt={handleDecrypt}
             onFaucet={handleFaucet}
             pools={poolsState}
-            userDeposit={userDeposit}
-            walletBalance={walletBalance}
+            userDeposit={getDisplayBalance(userDeposit)}
+            walletBalance={getDisplayBalance(walletBalance)}
           />
         ) : null}
         {activePage === "global" ? (
-          <GlobalPoolPage onDeposit={handleDeposit} onTriggerDraw={() => handleTriggerDraw("Global Pool")} walletBalance={walletBalance} />
+          <GlobalPoolPage
+            onDeposit={handleDeposit}
+            onTriggerDraw={() => handleTriggerDraw("Global Pool")}
+            walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
+          />
         ) : null}
         {activePage === "clubs" ? (
           <PrivateClubsPage
@@ -1817,7 +1960,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onDeposit={handleDeposit}
             onJoinClub={handleJoinClub}
             onTriggerDraw={handleTriggerDraw}
-            walletBalance={walletBalance}
+            walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
           />
         ) : null}
         {activePage === "draws" ? (
@@ -1831,8 +1974,8 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onDecrypt={handleDecrypt}
             onFaucet={handleFaucet}
             onWithdraw={handleWithdraw}
-            userDeposit={userDeposit}
-            walletBalance={walletBalance}
+            userDeposit={getDisplayBalance(userDeposit)}
+            walletBalance={getDisplayBalance(walletBalance)}
           />
         ) : null}
       </section>
@@ -1875,12 +2018,12 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
       <section className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-veil-gray-light">
         <MetricCard
           label="Wallet cUSDC"
-          value={`${walletBalance}.00`}
-          status="AVAILABLE_TO_DEPOSIT"
+          value={isDecrypted ? `${walletBalance} cUSDC` : "••••••"}
+          status={isDecrypted ? "USER_DECRYPTED" : "USER_DECRYPT_ONLY"}
         />
         <MetricCard
           label="Encrypted Principal"
-          value={isDecrypted ? `${userDeposit}.00 USDC` : "••••••"}
+          value={isDecrypted ? `${userDeposit} USDC` : "••••••"}
           status={isDecrypted ? "DECRYPTED_OK" : "USER_DECRYPT_ONLY"}
         />
         <MetricCard
@@ -1907,7 +2050,7 @@ function GlobalPoolPage({ onDeposit, onTriggerDraw, walletBalance }) {
   return (
     <div>
       <PageHeader
-        body="The public entry pool for onboarding. Anyone can deposit encrypted USDC, earn yield via Aave v3, and join weighted confidential prize draws."
+        body="The public entry pool for onboarding. Anyone can deposit encrypted cUSDC and join confidential prize draws without exposing balances."
         kicker="Public Pool"
         title="Global No-Loss Pool"
         action={
@@ -1920,9 +2063,9 @@ function GlobalPoolPage({ onDeposit, onTriggerDraw, walletBalance }) {
         }
       />
       <section className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-veil-gray-light mb-8">
-        <MetricCard label="Encrypted TVL" value="ciphertext:empty-total" status="TOTAL_HIDDEN" />
+        <MetricCard label="Encrypted TVL" value="encrypted" status="TOTAL_HIDDEN" />
         <MetricCard label="Members" value="0" status="PUBLIC_COUNT" />
-        <MetricCard label="Yield Strategy" value="AAVE v3" status="VARIABLE_APY" />
+        <MetricCard label="Yield Strategy" value="ONCHAIN" status="CONFIG_REQUIRED" />
         <MetricCard label="Prize" value="••••••" status="WINNER_DECRYPTS" />
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
@@ -1944,7 +2087,7 @@ function PrivateClubsPage({ clubs, onCreateClub, onJoinClub, onDeposit, onTrigge
   return (
     <div>
       <PageHeader
-        body="Create or join invitation-only prize pools. Each club has independent encrypted deposits, private odds, mock yield, and confidential prize claims."
+        body="Create or join invitation-only prize pools. Each club has independent encrypted deposits, private odds, yield routing, and confidential prize claims."
         kicker="Social Yield"
         title="Private Clubs"
         action={<VeilButton onClick={() => onCreateClub("Sovereign Alpha")}>+ Quick New Club</VeilButton>}
@@ -1974,7 +2117,7 @@ function PrivateClubsPage({ clubs, onCreateClub, onJoinClub, onDeposit, onTrigge
         <Panel title="Selected Club">
           <ClubDetail
             club={selectedClub}
-            onDeposit={(amt) => onDeposit(amt, selectedClub?.name || "Private Club")}
+            onDeposit={(amt) => onDeposit(amt, selectedClub?.name || "Private Club", selectedClub?.contractId || 0n)}
             onTriggerDraw={() => onTriggerDraw(selectedClub?.name || "Private Club")}
           />
         </Panel>
@@ -1995,7 +2138,7 @@ function DrawsPage({ draws, onTriggerDraw }) {
   return (
     <div>
       <PageHeader
-        body="Draws use encrypted balances as weights. The frontend only receives public events and ciphertext handles until the winner decrypts their prize."
+        body="Draws execute onchain over confidential pool state. The frontend only receives public events and ciphertext handles until an authorized user decrypts."
         kicker="Prize Draw"
         title="Confidential Draw History"
         action={<VeilButton onClick={onTriggerDraw}>Trigger FHE Draw</VeilButton>}
@@ -2165,11 +2308,11 @@ function TransactionForm({ mode, onDeposit, walletBalance }) {
         <LabelInput label="Amount" onChange={(e) => setAmount(e.target.value)} placeholder="100.00" value={amount} />
         {walletBalance != null && (
           <p className="font-data-sm text-data-sm text-veil-purple mt-1 ml-1">
-            Balance: {walletBalance}.00 cUSDC
+            Balance: {walletBalance} cUSDC
           </p>
         )}
       </div>
-      <LabelInput label="Token" placeholder="Mock USDC" value="cUSDC (ERC-7984)" />
+      <LabelInput label="Token" placeholder="cUSDC" value="cUSDC (ERC-7984)" />
       <VeilButton className="h-[50px]" onClick={() => onDeposit && onDeposit(amount, mode === "global" ? "Global Pool" : "Private Club")}>
         Encrypt Deposit
       </VeilButton>
@@ -2235,7 +2378,7 @@ function ClubDetail({ club, onDeposit, onTriggerDraw }) {
         <p className="font-data-sm text-data-sm text-veil-white opacity-50 mt-2">admin: {club.admin || "protocol"}</p>
       </div>
       <div className="grid grid-cols-2 gap-0 border border-veil-gray-light">
-        <MetricCard label="Encrypted TVL" value={club.tvl || "ciphertext:empty-total"} status="HIDDEN" />
+        <MetricCard label="Encrypted TVL" value={club.tvl || "encrypted"} status="HIDDEN" />
         <MetricCard label="Members" value={club.members || "0"} status="MAY_HIDE" />
         <MetricCard label="Next Draw" value={club.draw || "24H 00M"} status="ADMIN_OR_KEEPER" />
         <MetricCard label="Prize" value={club.prize || "•••••• USDC"} status="PRIVATE" />
@@ -2561,7 +2704,7 @@ function AppFooter() {
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <span className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase">&gt; FHE Handles Active</span>
-          <span className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase">v0.1 MVP</span>
+          <span className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase">Sepolia App</span>
         </div>
       </div>
     </footer>

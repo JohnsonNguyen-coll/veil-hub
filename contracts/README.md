@@ -6,17 +6,13 @@ Smart contracts for **Veil Clubs** built with `@fhevm/solidity` and OpenZeppelin
 
 ## 📜 Contracts
 
-### 1. `VeilConfidentialToken.sol`
-- Implements the **ERC-7984** standard for confidential tokens.
-- Manages encrypted balances (`euint64`) with transient access control for zero-knowledge transfers and deposits.
-
-### 2. `VeilClubs.sol`
+### 1. `VeilClubs.sol`
 - Inherits `ZamaEthereumConfig` and OpenZeppelin `Ownable`.
 - Implements **Global Pool** (Pool ID `0`) and dynamically created **Private Clubs** with independent invite gating.
 - **Accounting**:
   - `deposit(uint256 clubId, externalEuint64 encryptedAmount, bytes inputProof)`
   - `withdrawPrincipal(uint256 clubId)` (no-loss guarantee)
-  - `accrueMockYield(uint256 clubId, externalEuint64 encryptedAmount, bytes inputProof)`
+  - `accrueYield(uint256 clubId, externalEuint64 encryptedAmount, bytes inputProof)`
 - **Verifiable FHE Draw Kernel**:
   - `executeDraw(uint256 clubId, bytes32 drawCommitment)`:
     1. Generates onchain encrypted entropy via `FHE.randEuint64(memberCount)`.

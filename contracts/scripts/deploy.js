@@ -9,8 +9,8 @@ const DEFAULT_RPCS = [
   "https://1rpc.io/sepolia",
   "https://gateway.tenderly.co/public/sepolia"
 ];
-const ZAMA_SEPOLIA_CUSDC_MOCK_WRAPPER = "0x7c5BF43B851c1dff1a4feE8dB225b87f2C223639";
-const ZAMA_SEPOLIA_USDC_MOCK_UNDERLYING = "0x9b5Cd13b8eFbB58Dc25A05CF411D8056058aDFfF";
+const ZAMA_SEPOLIA_CUSDC_WRAPPER = "0x7c5BF43B851c1dff1a4feE8dB225b87f2C223639";
+const ZAMA_SEPOLIA_USDC_UNDERLYING = "0x9b5Cd13b8eFbB58Dc25A05CF411D8056058aDFfF";
 
 async function getWorkingProvider(customUrl) {
   const candidateUrls = customUrl ? [customUrl, ...DEFAULT_RPCS] : DEFAULT_RPCS;
@@ -88,10 +88,10 @@ async function main() {
   const compileOutput = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
   const clubsContract = compileOutput.contracts["contracts/VeilClubs.sol"].VeilClubs;
   syncFrontendAbis(compileOutput);
-  const depositTokenAddress = process.env.DEPOSIT_TOKEN_ADDRESS || process.env.VEIL_TOKEN_ADDRESS || ZAMA_SEPOLIA_CUSDC_MOCK_WRAPPER;
+  const depositTokenAddress = process.env.DEPOSIT_TOKEN_ADDRESS || process.env.VEIL_TOKEN_ADDRESS || ZAMA_SEPOLIA_CUSDC_WRAPPER;
 
   console.log("\n🔐 Deposit token:", depositTokenAddress);
-  console.log("   Default is Zama official Sepolia cUSDCMock wrapper.");
+  console.log("   Default is Zama official Sepolia cUSDC wrapper.");
 
   console.log("\n📦 Đang deploy VeilClubs (Main Pool & Draw Engine)...");
   const ClubsFactory = new ethers.ContractFactory(clubsContract.abi, clubsContract.evm.bytecode.object, wallet);
@@ -105,15 +105,15 @@ async function main() {
   console.log("🎉 DEPLOY THÀNH CÔNG TRỌN VẸN TRÊN SEPOLIA!");
   console.log("==================================================");
   console.log(`VITE_VEIL_TOKEN_ADDRESS=${depositTokenAddress}`);
-  console.log(`VITE_VEIL_UNDERLYING_TOKEN_ADDRESS=${ZAMA_SEPOLIA_USDC_MOCK_UNDERLYING}`);
+  console.log(`VITE_VEIL_UNDERLYING_TOKEN_ADDRESS=${ZAMA_SEPOLIA_USDC_UNDERLYING}`);
   console.log(`VITE_VEIL_CLUBS_ADDRESS=${clubsAddress}`);
   console.log("==================================================");
 
   upsertEnvValue(path.resolve("..", "frontend", ".env"), "VITE_VEIL_TOKEN_ADDRESS", depositTokenAddress);
-  upsertEnvValue(path.resolve("..", "frontend", ".env"), "VITE_VEIL_UNDERLYING_TOKEN_ADDRESS", ZAMA_SEPOLIA_USDC_MOCK_UNDERLYING);
+  upsertEnvValue(path.resolve("..", "frontend", ".env"), "VITE_VEIL_UNDERLYING_TOKEN_ADDRESS", ZAMA_SEPOLIA_USDC_UNDERLYING);
   upsertEnvValue(path.resolve("..", "frontend", ".env"), "VITE_VEIL_CLUBS_ADDRESS", clubsAddress);
   upsertEnvValue(path.resolve("..", "backend", ".env"), "VEIL_TOKEN_ADDRESS", depositTokenAddress);
-  upsertEnvValue(path.resolve("..", "backend", ".env"), "VEIL_UNDERLYING_TOKEN_ADDRESS", ZAMA_SEPOLIA_USDC_MOCK_UNDERLYING);
+  upsertEnvValue(path.resolve("..", "backend", ".env"), "VEIL_UNDERLYING_TOKEN_ADDRESS", ZAMA_SEPOLIA_USDC_UNDERLYING);
   upsertEnvValue(path.resolve("..", "backend", ".env"), "VEIL_CLUBS_ADDRESS", clubsAddress);
   console.log("✅ Đã cập nhật frontend/.env và backend/.env với địa chỉ mới.");
 }
