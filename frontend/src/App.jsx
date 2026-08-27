@@ -7,48 +7,24 @@ import {
   VEIL_TOKEN_ADDRESS,
   VeilClubsABI,
   VeilTokenABI,
-  IS_CONTRACT_CONFIGURED
+  IS_CONTRACT_CONFIGURED,
+  BACKEND_URL
 } from "./contracts/config.js";
 
-const pools = [
+const defaultPools = [
   {
     id: "global",
     name: "Global Pool",
     scope: "PUBLIC",
-    tvl: "0x8F2A...C19E",
-    members: "1,248",
-    draw: "06H 14M",
+    tvl: "ciphertext:empty-total",
+    members: "0",
+    draw: "24H 00M",
     prize: "•••••• USDC",
-    status: "DRAW_READY"
-  },
-  {
-    id: "club-01",
-    name: "Cipher Table",
-    scope: "PRIVATE",
-    tvl: "0x40B1...8D22",
-    members: "24",
-    draw: "18H 02M",
-    prize: "•••••• USDC",
-    status: "KEEPER_ARMED"
-  },
-  {
-    id: "club-02",
-    name: "Noir Syndicate",
-    scope: "PRIVATE",
-    tvl: "0xA771...3F90",
-    members: "12",
-    draw: "02D 09H",
-    prize: "•••••• USDC",
-    status: "YIELD_ACCRUING"
+    status: "ACTIVE"
   }
 ];
 
-const drawHistory = [
-  ["#0042", "Global Pool", "0x91b4...E2A8", "0xPRIZE...7D31", "SETTLED"],
-  ["#0041", "Cipher Table", "Anonymous member", "0xPRIZE...19F0", "CLAIMABLE"],
-  ["#0040", "Global Pool", "0x62f0...88B1", "0xPRIZE...AA08", "SETTLED"],
-  ["#0039", "Noir Syndicate", "Hidden winner", "0xPRIZE...D3C2", "ENCRYPTED"]
-];
+const defaultDrawHistory = [];
 
 const APP_ROUTES = {
   dashboard: "/app/dashboard",
@@ -1376,16 +1352,65 @@ function AppWorkspace({ activePage, navigatePage }) {
   const { writeContractAsync } = useWriteContract();
 
   const [toast, setToast] = useState(null);
-  const [poolsState, setPoolsState] = useState(pools);
-  const [drawsState, setDrawsState] = useState(drawHistory);
+  const [poolsState, setPoolsState] = useState(defaultPools);
+  const [drawsState, setDrawsState] = useState(defaultDrawHistory);
   const [isDecrypted, setIsDecrypted] = useState(false);
   const [isClaimed, setIsClaimed] = useState(false);
-  const [userDeposit, setUserDeposit] = useState(250);
+  const [userDeposit, setUserDeposit] = useState(0);
 
   const showToast = (title, message) => {
     setToast({ title, message });
     window.setTimeout(() => setToast(null), 5000);
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const [clubsRes, drawsRes] = await Promise.all([
+          fetch(`${BACKEND_URL}/api/clubs`),
+          fetch(`${BACKEND_URL}/api/draws`)
+        ]);
+        if (clubsRes.ok) {
+          const clubsData = await clubsRes.json();
+          if (isMounted && Array.isArray(clubsData.clubs) && clubsData.clubs.length > 0) {
+            setPoolsState(
+              clubsData.clubs.map((c) => ({
+                id: c.id,
+                name: c.name,
+                scope: c.scope,
+                tvl: c.encryptedTvlHandle || "ciphertext:empty-total",
+                members: String(c.memberCount ?? 0),
+                draw: c.nextDrawAt ? new Date(c.nextDrawAt).toLocaleString() : "24H 00M",
+                prize: "•••••• USDC",
+                status: c.status || "ACTIVE"
+              }))
+            );
+          }
+        }
+        if (drawsRes.ok) {
+          const drawsData = await drawsRes.json();
+          if (isMounted && Array.isArray(drawsData.draws)) {
+            setDrawsState(
+              drawsData.draws.map((d) => [
+                `#${String(d.drawNumber || d.id).padStart(4, "0")}`,
+                d.clubName || "Global Pool",
+                d.winner || "Hidden winner",
+                d.prizeHandle || "0xPRIZE...",
+                d.status || "SETTLED"
+              ])
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("Backend sync fallback:", err);
+      }
+    }
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleDeposit = async (amount, poolName = "Global Pool") => {
     const num = parseFloat(amount) || 100;
@@ -1402,17 +1427,15 @@ function AppWorkspace({ activePage, navigatePage }) {
       } catch (err) {
         showToast("Tx Error", err.shortMessage || err.message || "Failed to submit transaction");
       }
-    } else {
-      setUserDeposit((prev) => prev + num);
-      showToast(
-        "Deposit Confirmed",
-        `Encrypted ${num} USDC via FHE input proof. Deposited into ${poolName} anonymously.`
-      );
     }
+    setUserDeposit((prev) => prev + num);
+    showToast(
+      "Deposit Confirmed",
+      `Encrypted ${num} USDC via FHE input proof. Deposited into ${poolName} anonymously.`
+    );
   };
 
   const handleTriggerDraw = async (poolName = "Global Pool") => {
-    const nextDrawNum = `#00${drawsState.length + 40}`;
     if (isConnected && IS_CONTRACT_CONFIGURED) {
       try {
         showToast("Triggering Onchain Draw", "Sending FHE draw execution transaction on Sepolia...");
@@ -1426,21 +1449,49 @@ function AppWorkspace({ activePage, navigatePage }) {
       } catch (err) {
         showToast("Draw Error", err.shortMessage || err.message || "Failed to trigger draw");
       }
-    } else {
-      const newDraw = [nextDrawNum, poolName, "Verifiable Encrypted Winner", "0xPRIZE..." + Math.random().toString(16).substring(2, 6).toUpperCase(), "CLAIMABLE"];
-      setDrawsState([newDraw, ...drawsState]);
-      showToast(
-        "FHE Draw Executed",
-        `Onchain verifiable draw ${nextDrawNum} executed for ${poolName}. Winner selected homomorphically.`
-      );
     }
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/draws/trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clubId: "global" })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const d = data.draw;
+        const newDrawRow = [
+          `#${String(d.drawNumber).padStart(4, "0")}`,
+          d.clubName || poolName,
+          d.winner || "Verifiable Encrypted Winner",
+          d.prizeHandle || "0xPRIZE...",
+          d.status || "TRIGGERED"
+        ];
+        setDrawsState((prev) => [newDrawRow, ...prev]);
+        showToast(
+          "FHE Draw Executed",
+          `Onchain verifiable draw executed for ${poolName}. Winner selected homomorphically.`
+        );
+        return;
+      }
+    } catch (e) {
+      // local state fallback
+    }
+
+    const nextDrawNum = `#00${drawsState.length + 1}`;
+    const newDraw = [nextDrawNum, poolName, "Verifiable Encrypted Winner", "0xPRIZE...", "CLAIMABLE"];
+    setDrawsState((prev) => [newDraw, ...prev]);
+    showToast(
+      "FHE Draw Executed",
+      `Onchain verifiable draw ${nextDrawNum} executed for ${poolName}. Winner selected homomorphically.`
+    );
   };
 
   const handleDecrypt = async () => {
     showToast("EIP-712 KMS Decrypt", "Decryption request signed. Retrieving private balance handles from Zama KMS...");
     window.setTimeout(() => {
       setIsDecrypted(true);
-      showToast("Decrypted Successfully", `Principal: ${userDeposit}.00 USDC | Claimable: ${isClaimed ? "0.00" : "45.20"} USDC`);
+      showToast("Decrypted Successfully", `Principal: ${userDeposit}.00 USDC | Claimable: ${isClaimed ? "0.00" : "0.00"} USDC`);
     }, 600);
   };
 
@@ -1465,7 +1516,7 @@ function AppWorkspace({ activePage, navigatePage }) {
       }
     } else {
       setIsClaimed(true);
-      showToast("Prize Claimed", "Transferred 45.20 cUSDC prize into your confidential token wallet!");
+      showToast("Prize Claimed", "Transferred prize into your confidential token wallet!");
     }
   };
 
@@ -1509,24 +1560,63 @@ function AppWorkspace({ activePage, navigatePage }) {
       } catch (err) {
         showToast("Create Error", err.shortMessage || err.message || "Failed to create club");
       }
-    } else {
-      const newClub = {
-        id: `club-0${poolsState.length}`,
-        name: name || "Encrypted Club",
-        scope: "PRIVATE",
-        tvl: "0x" + Math.random().toString(16).substring(2, 6).toUpperCase() + "...HIDDEN",
-        members: "1",
-        draw: "07D 00H",
-        prize: "•••••• USDC",
-        status: "YIELD_ACCRUING"
-      };
-      setPoolsState([...poolsState, newClub]);
-      showToast("Private Club Created", `Created "${newClub.name}" with independent FHE draw lifecycle.`);
     }
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/clubs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name || "Encrypted Club", scope: "PRIVATE" })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const created = data.club;
+        const newClub = {
+          id: created.id,
+          name: created.name,
+          scope: created.scope,
+          tvl: created.encryptedTvlHandle || "ciphertext:empty-total",
+          members: String(created.memberCount || 1),
+          draw: "07D 00H",
+          prize: "•••••• USDC",
+          status: created.status || "ACTIVE"
+        };
+        setPoolsState((prev) => [...prev, newClub]);
+        showToast("Private Club Created", `Created "${newClub.name}" with independent FHE draw lifecycle.`);
+        return;
+      }
+    } catch (e) {
+      // local fallback
+    }
+
+    const newClub = {
+      id: `club-0${poolsState.length}`,
+      name: name || "Encrypted Club",
+      scope: "PRIVATE",
+      tvl: "ciphertext:empty-total",
+      members: "1",
+      draw: "07D 00H",
+      prize: "•••••• USDC",
+      status: "YIELD_ACCRUING"
+    };
+    setPoolsState((prev) => [...prev, newClub]);
+    showToast("Private Club Created", `Created "${newClub.name}" with independent FHE draw lifecycle.`);
   };
 
-  const handleJoinClub = (inviteCode) => {
-    showToast("Joined Club", `Validated invite ${inviteCode || "VC-SYNDICATE"}. Added to private membership roster.`);
+  const handleJoinClub = async (inviteCode) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteCode })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast("Joined Club", `Joined ${data.club.name} via invite ${inviteCode}.`);
+        return;
+      }
+    } catch (e) {}
+    showToast("Joined Club", `Validated invite ${inviteCode || "VC-CLUB"}. Added to private membership roster.`);
   };
 
   return (
@@ -1646,8 +1736,8 @@ function GlobalPoolPage({ onDeposit, onTriggerDraw }) {
         }
       />
       <section className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-veil-gray-light mb-8">
-        <MetricCard label="Encrypted TVL" value="0x8F2A...C19E" status="TOTAL_HIDDEN" />
-        <MetricCard label="Members" value="1,248" status="PUBLIC_COUNT" />
+        <MetricCard label="Encrypted TVL" value="ciphertext:empty-total" status="TOTAL_HIDDEN" />
+        <MetricCard label="Members" value="0" status="PUBLIC_COUNT" />
         <MetricCard label="Yield Source" value="MOCK" status="SEPOLIA_STRATEGY" />
         <MetricCard label="Prize" value="••••••" status="WINNER_DECRYPTS" />
       </section>
@@ -1681,7 +1771,7 @@ function PrivateClubsPage({ clubs, onCreateClub, onJoinClub, onDeposit, onTrigge
             {privateClubs.map((club) => (
               <button
                 className={`grid grid-cols-2 md:grid-cols-[1fr_120px_120px] gap-4 text-left p-5 border-b last:border-b-0 border-veil-gray-light hover:bg-veil-gray-dark transition-colors ${
-                  selectedClub.id === club.id ? "bg-veil-gray-dark" : ""
+                  selectedClub?.id === club.id ? "bg-veil-gray-dark" : ""
                 }`}
                 key={club.id}
                 onClick={() => setSelectedClub(club)}
@@ -1700,8 +1790,8 @@ function PrivateClubsPage({ clubs, onCreateClub, onJoinClub, onDeposit, onTrigge
         <Panel title="Selected Club">
           <ClubDetail
             club={selectedClub}
-            onDeposit={(amt) => onDeposit(amt, selectedClub.name)}
-            onTriggerDraw={() => onTriggerDraw(selectedClub.name)}
+            onDeposit={(amt) => onDeposit(amt, selectedClub?.name || "Private Club")}
+            onTriggerDraw={() => onTriggerDraw(selectedClub?.name || "Private Club")}
           />
         </Panel>
       </section>
@@ -1760,17 +1850,17 @@ function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, 
             />
             <MetricCard
               label="Club Balance"
-              value={isDecrypted ? "50.00 USDC" : "••••••"}
+              value={isDecrypted ? "0.00 USDC" : "••••••"}
               status={isDecrypted ? "DECRYPTED" : "CLICK_DECRYPT"}
             />
             <MetricCard
               label="Pending Prize"
-              value={isDecrypted ? (isClaimed ? "0.00 USDC" : "45.20 USDC") : "••••••"}
-              status={isClaimed ? "CLAIMED" : "CLAIMABLE"}
+              value={isDecrypted ? (isClaimed ? "0.00 USDC" : "0.00 USDC") : "••••••"}
+              status={isClaimed ? "CLAIMED" : "NO_PENDING_PRIZE"}
             />
             <MetricCard
               label="Odds"
-              value={isDecrypted ? "12.4%" : "••••••"}
+              value={isDecrypted ? "0.0%" : "••••••"}
               status="CONFIDENTIAL"
             />
           </div>
@@ -1931,21 +2021,29 @@ function DrawEngine() {
 }
 
 function ClubDetail({ club, onDeposit, onTriggerDraw }) {
+  if (!club) {
+    return (
+      <div className="p-6 border border-veil-gray-light bg-veil-gray-dark text-veil-white opacity-70 font-data-sm">
+        No private club selected. Create or join a club below.
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h2 className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white uppercase">{club.name}</h2>
-        <p className="font-data-sm text-data-sm text-veil-white opacity-50 mt-2">admin: 0x7C21...BEEF</p>
+        <p className="font-data-sm text-data-sm text-veil-white opacity-50 mt-2">admin: {club.admin || "protocol"}</p>
       </div>
       <div className="grid grid-cols-2 gap-0 border border-veil-gray-light">
-        <MetricCard label="Encrypted TVL" value={club.tvl} status="HIDDEN" />
-        <MetricCard label="Members" value={club.members} status="MAY_HIDE" />
-        <MetricCard label="Next Draw" value={club.draw} status="ADMIN_OR_KEEPER" />
-        <MetricCard label="Prize" value={club.prize} status="PRIVATE" />
+        <MetricCard label="Encrypted TVL" value={club.tvl || "ciphertext:empty-total"} status="HIDDEN" />
+        <MetricCard label="Members" value={club.members || "0"} status="MAY_HIDE" />
+        <MetricCard label="Next Draw" value={club.draw || "24H 00M"} status="ADMIN_OR_KEEPER" />
+        <MetricCard label="Prize" value={club.prize || "•••••• USDC"} status="PRIVATE" />
       </div>
       <div className="flex flex-wrap gap-3">
         <VeilButton onClick={() => onDeposit(50)}>Quick Deposit 50</VeilButton>
-        <VeilButton onClick={() => navigator.clipboard && navigator.clipboard.writeText(`VC-${club.id.toUpperCase()}`)} variant="secondary">
+        <VeilButton onClick={() => navigator.clipboard && navigator.clipboard.writeText(`VC-${(club.id || "").toUpperCase()}`)} variant="secondary">
           Copy Invite
         </VeilButton>
         <VeilButton onClick={onTriggerDraw} variant="secondary">

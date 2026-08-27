@@ -10,45 +10,15 @@
       "inviteCode": null,
       "minDeposit": "1",
       "drawIntervalMs": 86400000,
-      "nextDrawAt": "2026-08-14T00:00:00.000Z",
+      "nextDrawAt": "2026-08-28T00:00:00.000Z",
       "anonymousMembers": false,
-      "memberCount": 1248,
-      "encryptedTvlHandle": "0x8F2A...C19E",
-      "encryptedPrizeHandle": "0xPRIZE...7D31",
-      "status": "DRAW_READY",
-      "createdAt": "2026-08-13T00:00:00.000Z"
-    },
-    {
-      "id": "club-01",
-      "name": "Cipher Table",
-      "description": "Private social yield club.",
-      "scope": "PRIVATE",
-      "admin": "0x7C21...BEEF",
-      "keeper": "0x7C21...BEEF",
-      "inviteCode": "VC-CIPHER-01",
-      "minDeposit": "25",
-      "drawIntervalMs": 604800000,
-      "nextDrawAt": "2026-08-15T00:00:00.000Z",
-      "anonymousMembers": true,
-      "memberCount": 24,
-      "encryptedTvlHandle": "0x40B1...8D22",
-      "encryptedPrizeHandle": "0xPRIZE...19F0",
-      "status": "KEEPER_ARMED",
-      "createdAt": "2026-08-13T00:00:00.000Z"
+      "memberCount": 0,
+      "encryptedTvlHandle": "ciphertext:empty-total",
+      "encryptedPrizeHandle": "ciphertext:empty-prize",
+      "status": "ACTIVE",
+      "createdAt": "2026-08-28T00:00:00.000Z"
     }
   ],
-  "draws": [
-    {
-      "id": "draw-0042",
-      "drawNumber": 42,
-      "clubId": "global",
-      "clubName": "Global Pool",
-      "winner": "0x91b4...E2A8",
-      "prizeHandle": "0xPRIZE...7D31",
-      "status": "SETTLED",
-      "txHash": "0xTX...0042",
-      "createdAt": "2026-08-13T00:00:00.000Z"
-    }
-  ],
+  "draws": [],
   "faucetClaims": {}
 }
