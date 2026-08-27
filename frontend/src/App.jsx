@@ -1761,7 +1761,7 @@ function GlobalPoolPage({ onDeposit, onTriggerDraw, onFaucet }) {
       <section className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-veil-gray-light mb-8">
         <MetricCard label="Encrypted TVL" value="ciphertext:empty-total" status="TOTAL_HIDDEN" />
         <MetricCard label="Members" value="0" status="PUBLIC_COUNT" />
-        <MetricCard label="Yield Source" value="MOCK" status="SEPOLIA_STRATEGY" />
+        <MetricCard label="Yield Strategy" value="AAVE v3" status="VARIABLE_APY" />
         <MetricCard label="Prize" value="••••••" status="WINNER_DECRYPTS" />
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
