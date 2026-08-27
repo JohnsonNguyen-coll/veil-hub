@@ -1650,12 +1650,13 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             isDecrypted={isDecrypted}
             navigatePage={navigatePage}
             onDecrypt={handleDecrypt}
+            onFaucet={handleFaucet}
             pools={poolsState}
             userDeposit={userDeposit}
           />
         ) : null}
         {activePage === "global" ? (
-          <GlobalPoolPage onDeposit={handleDeposit} onFaucet={handleFaucet} onTriggerDraw={() => handleTriggerDraw("Global Pool")} />
+          <GlobalPoolPage onDeposit={handleDeposit} onTriggerDraw={() => handleTriggerDraw("Global Pool")} />
         ) : null}
         {activePage === "clubs" ? (
           <PrivateClubsPage
@@ -1675,6 +1676,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             isDecrypted={isDecrypted}
             onClaim={handleClaim}
             onDecrypt={handleDecrypt}
+            onFaucet={handleFaucet}
             onWithdraw={handleWithdraw}
             userDeposit={userDeposit}
           />
@@ -1697,7 +1699,7 @@ function PageHeader({ kicker, title, body, action }) {
   );
 }
 
-function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposit, onDecrypt }) {
+function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposit, onDecrypt, onFaucet }) {
   return (
     <div>
       <PageHeader
@@ -1705,7 +1707,10 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
         kicker="Private Terminal"
         title="Your Confidential Position"
         action={
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <VeilButton onClick={onFaucet} variant="secondary">
+              Get Faucet
+            </VeilButton>
             <VeilButton onClick={onDecrypt} variant="secondary">
               {isDecrypted ? "Refresh Decrypt" : "Decrypt Balance"}
             </VeilButton>
@@ -1721,7 +1726,7 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
         />
         <MetricCard
           label="Claimable Winnings"
-          value={isDecrypted ? (isClaimed ? "0.00 USDC" : "45.20 USDC") : "••••••"}
+          value={isDecrypted ? (isClaimed ? "0.00 USDC" : "0.00 USDC") : "••••••"}
           status={isDecrypted ? (isClaimed ? "CLAIMED" : "READY_TO_CLAIM") : "EIP712_REQUIRED"}
         />
         <MetricCard label="Active Pools" value={`0${pools.length}`} status="GLOBAL_PLUS_CLUBS" />
@@ -1854,7 +1859,7 @@ function DrawsPage({ draws, onTriggerDraw }) {
   );
 }
 
-function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, onWithdraw }) {
+function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, onFaucet, onWithdraw }) {
   return (
     <div>
       <PageHeader
@@ -1888,13 +1893,16 @@ function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, 
             />
           </div>
           <div className="flex flex-wrap gap-3 mt-6">
+            <VeilButton onClick={onFaucet} variant="secondary">
+              Get Faucet 100 cUSDC
+            </VeilButton>
             <VeilButton onClick={onDecrypt}>
               {isDecrypted ? "Re-decrypt Balance" : "Decrypt Balance"}
             </VeilButton>
             <VeilButton disabled={isClaimed} onClick={onClaim} variant="secondary">
-              {isClaimed ? "Prize Claimed" : "Claim Prize (45.20 USDC)"}
+              {isClaimed ? "Prize Claimed" : "Claim Prize"}
             </VeilButton>
-            <VeilButton onClick={onWithdraw} variant="secondary">
+            <VeilButton disabled={userDeposit <= 0} onClick={onWithdraw} variant="secondary">
               Withdraw Principal
             </VeilButton>
           </div>
