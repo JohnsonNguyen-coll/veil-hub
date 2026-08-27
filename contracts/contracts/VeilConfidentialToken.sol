@@ -20,7 +20,10 @@ contract VeilConfidentialToken is ERC7984, Ownable, ZamaEthereumConfig {
 
     /// @notice Public testnet faucet function to mint 100 cUSDC FHE confidential tokens.
     function faucetMint(address to) external {
-        _mint(to, FHE.asEuint64(100));
+        euint64 amount = FHE.asEuint64(100);
+        FHE.allowThis(amount);
+        FHE.allow(amount, to);
+        _mint(to, amount);
     }
 
     function burn(address from, externalEuint64 amount, bytes calldata inputProof) external onlyOwner {
