@@ -13,13 +13,16 @@ const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 
 const customRpcUrl = import.meta.env.VITE_SEPOLIA_RPC_URL;
 
 const rpcEndpoints = [
-  http("https://rpc.sepolia.org"),
   http("https://ethereum-sepolia-rpc.publicnode.com"),
   http("https://sepolia.gateway.tenderly.co"),
+  http("https://1rpc.io/sepolia"),
+  http("https://gateway.tenderly.co/public/sepolia"),
+  http("https://rpc2.sepolia.org"),
   http()
 ];
 
-if (customRpcUrl) {
+if (customRpcUrl && !rpcEndpoints.some((r) => r.url === customRpcUrl)) {
+  // Alchemy / Private RPC from .env is placed as the final high-reliability fallback
   rpcEndpoints.push(http(customRpcUrl));
 }
 

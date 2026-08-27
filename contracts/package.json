@@ -9,7 +9,7 @@
     "compile": "hardhat compile",
     "compile:solc": "node scripts/compile-solc.js",
     "test": "hardhat test",
-    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia"
+    "deploy:sepolia": "node scripts/deploy.js"
   },
   "dependencies": {
     "@fhevm/solidity": "0.11.1",
