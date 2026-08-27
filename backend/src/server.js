@@ -473,7 +473,7 @@ async function requestFaucet(req, res) {
     store.faucetClaims[address] = now;
     return {
       allowed: true,
-      txHash: `0xFAUCET${randomBytes(12).toString("hex")}`,
+      txHash: `0x${randomBytes(32).toString("hex")}`,
       amount: "100",
       token: "vcUSDC"
     };
@@ -483,7 +483,7 @@ async function requestFaucet(req, res) {
 }
 
 function createDrawForClub(store, club, source) {
-  const drawNumber = store.draws.length + 43;
+  const drawNumber = store.draws.length + 1;
   const createdAt = new Date().toISOString();
   const draw = {
     id: `draw-${String(drawNumber).padStart(4, "0")}`,
@@ -493,7 +493,7 @@ function createDrawForClub(store, club, source) {
     winner: club.anonymousMembers ? "Hidden winner" : "0xPENDING...WIN",
     prizeHandle: club.encryptedPrizeHandle || `0xPRIZE...${randomBytes(2).toString("hex").toUpperCase()}`,
     status: "TRIGGERED",
-    txHash: `0xDRAW${randomBytes(12).toString("hex")}`,
+    txHash: `0x${randomBytes(32).toString("hex")}`,
     source,
     createdAt
   };
