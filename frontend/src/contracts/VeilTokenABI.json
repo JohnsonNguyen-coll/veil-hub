@@ -664,6 +664,19 @@
         "internalType": "address",
         "name": "to",
         "type": "address"
+      }
+    ],
+    "name": "faucetMint",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
       },
       {
         "internalType": "externalEuint64",

@@ -1367,6 +1367,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
   const [isDecrypted, setIsDecrypted] = useState(false);
   const [isClaimed, setIsClaimed] = useState(false);
   const [userDeposit, setUserDeposit] = useState(0);
+  const [walletBalance, setWalletBalance] = useState(0);
 
   const showToast = (title, message, txHash = null) => {
     setToast({ title, message, txHash });
@@ -1379,12 +1380,15 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
 
     if (isConnected && IS_CONTRACT_CONFIGURED) {
       try {
-        showToast("Signing Onchain Faucet", "Signing 100 vcUSDC Faucet transaction on Sepolia...");
+        showToast("Signing Onchain Faucet", "Signing 100 cUSDC Faucet transaction on Sepolia...");
+        const useTokenContract = VEIL_TOKEN_ADDRESS && VEIL_TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000";
         const tx = await writeContractAsync({
-          address: VEIL_CLUBS_ADDRESS,
-          abi: VeilClubsABI,
-          functionName: "createClub",
-          args: [`Faucet 100 vcUSDC`, `Testnet Token Dispatch to ${targetAddr.slice(0, 8)}`, 100n, 86400n, false]
+          address: useTokenContract ? VEIL_TOKEN_ADDRESS : VEIL_CLUBS_ADDRESS,
+          abi: useTokenContract ? VeilTokenABI : VeilClubsABI,
+          functionName: useTokenContract ? "faucetMint" : "createClub",
+          args: useTokenContract
+            ? [targetAddr]
+            : [`Faucet 100 cUSDC`, `Testnet Token Dispatch to ${targetAddr.slice(0, 8)}`, 100n, 86400n, false]
         });
         onchainTxHash = tx;
       } catch (err) {
@@ -1401,16 +1405,18 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
       const data = await res.json();
       const finalTx = onchainTxHash || (data.allowed ? data.txHash : null);
       if (res.ok || onchainTxHash) {
+        setWalletBalance((prev) => prev + 100);
         showToast(
           "Faucet Tx Confirmed",
-          `Dispatched 100 vcUSDC confidential test tokens on Sepolia!`,
+          `Dispatched 100 cUSDC confidential test tokens on Sepolia!`,
           finalTx
         );
       } else {
         showToast("Faucet Notice", data.message || "Cooldown active: 24h limit per wallet address.", onchainTxHash);
       }
     } catch (err) {
-      showToast("Faucet Tx Confirmed", "Dispatched 100 vcUSDC test tokens on Sepolia!", onchainTxHash);
+      setWalletBalance((prev) => prev + 100);
+      showToast("Faucet Tx Confirmed", "Dispatched 100 cUSDC test tokens on Sepolia!", onchainTxHash);
     }
   };
 
@@ -1488,6 +1494,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     }
 
     setUserDeposit((prev) => prev + num);
+    setWalletBalance((prev) => Math.max(0, prev - num));
     if (!submittedOnchain) {
       showToast(
         "Deposit Confirmed",
@@ -1604,6 +1611,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     } else {
       const amt = userDeposit;
       setUserDeposit(0);
+      setWalletBalance((prev) => prev + amt);
       showToast("Principal Withdrawn", `Withdrew ${amt}.00 USDC principal without loss to your wallet.`);
     }
   };
@@ -1618,9 +1626,10 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
           functionName: "createClub",
           args: [name || "Private Club", "Confidential Club", 25n, 604800n, true]
         });
-        showToast("Club Created Onchain", `Creation tx: ${tx.slice(0, 10)}...${tx.slice(-6)}`);
+        showToast("Club Created Onchain", `Creation tx confirmed on Sepolia!`, tx);
       } catch (err) {
-        showToast("Create Error", err.shortMessage || err.message || "Failed to create club");
+        showToast("Create Cancelled", err.shortMessage || err.message || "Transaction was rejected.");
+        return;
       }
     }
 
@@ -1695,10 +1704,11 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onFaucet={handleFaucet}
             pools={poolsState}
             userDeposit={userDeposit}
+            walletBalance={walletBalance}
           />
         ) : null}
         {activePage === "global" ? (
-          <GlobalPoolPage onDeposit={handleDeposit} onTriggerDraw={() => handleTriggerDraw("Global Pool")} />
+          <GlobalPoolPage onDeposit={handleDeposit} onTriggerDraw={() => handleTriggerDraw("Global Pool")} walletBalance={walletBalance} />
         ) : null}
         {activePage === "clubs" ? (
           <PrivateClubsPage
@@ -1707,6 +1717,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onDeposit={handleDeposit}
             onJoinClub={handleJoinClub}
             onTriggerDraw={handleTriggerDraw}
+            walletBalance={walletBalance}
           />
         ) : null}
         {activePage === "draws" ? (
@@ -1721,6 +1732,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onFaucet={handleFaucet}
             onWithdraw={handleWithdraw}
             userDeposit={userDeposit}
+            walletBalance={walletBalance}
           />
         ) : null}
       </section>
@@ -1741,7 +1753,7 @@ function PageHeader({ kicker, title, body, action }) {
   );
 }
 
-function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposit, onDecrypt, onFaucet }) {
+function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposit, onDecrypt, onFaucet, walletBalance }) {
   return (
     <div>
       <PageHeader
@@ -1760,7 +1772,12 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
           </div>
         }
       />
-      <section className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-veil-gray-light">
+      <section className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-veil-gray-light">
+        <MetricCard
+          label="Wallet cUSDC"
+          value={`${walletBalance}.00`}
+          status="AVAILABLE_TO_DEPOSIT"
+        />
         <MetricCard
           label="Encrypted Principal"
           value={isDecrypted ? `${userDeposit}.00 USDC` : "••••••"}
@@ -1786,18 +1803,15 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
   );
 }
 
-function GlobalPoolPage({ onDeposit, onTriggerDraw, onFaucet }) {
+function GlobalPoolPage({ onDeposit, onTriggerDraw, walletBalance }) {
   return (
     <div>
       <PageHeader
-        body="The public entry pool for onboarding. Anyone can deposit encrypted test USDC, earn mock yield, and join weighted confidential prize draws."
+        body="The public entry pool for onboarding. Anyone can deposit encrypted USDC, earn yield via Aave v3, and join weighted confidential prize draws."
         kicker="Public Pool"
         title="Global No-Loss Pool"
         action={
           <div className="flex flex-wrap gap-3">
-            <VeilButton onClick={onFaucet} variant="secondary">
-              Get Faucet 100 cUSDC
-            </VeilButton>
             <VeilButton onClick={onTriggerDraw} variant="secondary">
               Trigger FHE Draw
             </VeilButton>
@@ -1813,7 +1827,7 @@ function GlobalPoolPage({ onDeposit, onTriggerDraw, onFaucet }) {
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
         <Panel title="Deposit Flow">
-          <TransactionForm mode="global" onDeposit={onDeposit} />
+          <TransactionForm mode="global" onDeposit={onDeposit} walletBalance={walletBalance} />
         </Panel>
         <Panel title="Draw Engine">
           <DrawEngine />
@@ -1901,7 +1915,7 @@ function DrawsPage({ draws, onTriggerDraw }) {
   );
 }
 
-function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, onFaucet, onWithdraw }) {
+function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, onFaucet, onWithdraw, walletBalance }) {
   return (
     <div>
       <PageHeader
@@ -1913,6 +1927,11 @@ function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, 
       <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <Panel title="Decrypt Center">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border border-veil-gray-light">
+            <MetricCard
+              label="Wallet cUSDC"
+              value={`${walletBalance}.00`}
+              status="AVAILABLE_BALANCE"
+            />
             <MetricCard
               label="Global Balance"
               value={isDecrypted ? `${userDeposit}.00 USDC` : "••••••"}
@@ -2037,12 +2056,19 @@ function DataTable({ columns, rows }) {
   );
 }
 
-function TransactionForm({ mode, onDeposit }) {
+function TransactionForm({ mode, onDeposit, walletBalance }) {
   const [amount, setAmount] = useState("100.00");
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
-      <LabelInput label="Amount" onChange={(e) => setAmount(e.target.value)} placeholder="100.00" value={amount} />
+      <div>
+        <LabelInput label="Amount" onChange={(e) => setAmount(e.target.value)} placeholder="100.00" value={amount} />
+        {walletBalance != null && (
+          <p className="font-data-sm text-data-sm text-veil-purple mt-1 ml-1">
+            Balance: {walletBalance}.00 cUSDC
+          </p>
+        )}
+      </div>
       <LabelInput label="Token" placeholder="Mock USDC" value="cUSDC (ERC-7984)" />
       <VeilButton className="h-[50px]" onClick={() => onDeposit && onDeposit(amount, mode === "global" ? "Global Pool" : "Private Club")}>
         Encrypt Deposit

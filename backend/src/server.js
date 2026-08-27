@@ -475,7 +475,7 @@ async function requestFaucet(req, res) {
       allowed: true,
       txHash: `0x${randomBytes(32).toString("hex")}`,
       amount: "100",
-      token: "vcUSDC"
+      token: "cUSDC"
     };
   });
 
