@@ -67,9 +67,9 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         bool anonymousMembers
     );
     event KeeperSet(uint256 indexed clubId, address indexed keeper);
-    event MemberJoined(uint256 indexed clubId, address indexed member);
-    event EncryptedDeposit(uint256 indexed clubId, address indexed member, euint64 amountHandle);
-    event PrincipalWithdrawn(uint256 indexed clubId, address indexed member, euint64 amountHandle);
+    event MemberJoined(uint256 indexed clubId);
+    event EncryptedDeposit(uint256 indexed clubId, euint64 amountHandle);
+    event PrincipalWithdrawn(uint256 indexed clubId, euint64 amountHandle);
     event YieldAccrued(uint256 indexed clubId, address indexed source, euint64 amountHandle);
     event DrawTriggered(uint256 indexed clubId, uint256 indexed drawId, euint64 prizeHandle, bytes32 drawCommitment);
     event DrawExecuted(
@@ -79,7 +79,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         bytes32 drawCommitment,
         uint256 memberCount
     );
-    event PrizeClaimed(uint256 indexed clubId, uint256 indexed drawId, address indexed member, euint64 prizeHandle);
+    event PrizeClaimed(uint256 indexed clubId, uint256 indexed drawId, euint64 prizeHandle);
 
     error ClubNotFound(uint256 clubId);
     error NotClubAdminOrKeeper(uint256 clubId, address caller);
@@ -130,7 +130,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
 
     function setKeeper(uint256 clubId, address keeper) external {
         Club storage club = _requireClub(clubId);
-        if (msg.sender != club.admin) revert NotClubAdminOrKeeper(clubId, msg.sender);
+        if (msg.sender != club.admin && msg.sender != owner()) revert NotClubAdminOrKeeper(clubId, msg.sender);
         club.keeper = keeper;
         emit KeeperSet(clubId, keeper);
     }
@@ -149,7 +149,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         _allowUserAndContract(club.principal[msg.sender], msg.sender);
         _allowContractOnly(club.encryptedTotalPrincipal);
 
-        emit EncryptedDeposit(clubId, msg.sender, received);
+        emit EncryptedDeposit(clubId, received);
     }
 
     function withdrawPrincipal(uint256 clubId) external {
@@ -165,7 +165,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         _allowUserAndContract(club.principal[msg.sender], msg.sender);
         _allowContractOnly(club.encryptedTotalPrincipal);
 
-        emit PrincipalWithdrawn(clubId, msg.sender, amount);
+        emit PrincipalWithdrawn(clubId, amount);
     }
 
     function accrueYield(uint256 clubId, externalEuint64 encryptedAmount, bytes calldata inputProof) external {
@@ -241,7 +241,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         depositToken.confidentialTransfer(msg.sender, prize);
 
         _allowUserAndContract(prize, msg.sender);
-        emit PrizeClaimed(clubId, drawId, msg.sender, prize);
+        emit PrizeClaimed(clubId, drawId, prize);
     }
 
     function clubView(uint256 clubId) external view returns (ClubView memory view_) {
@@ -296,7 +296,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         if (club.members.length >= MAX_MEMBERS_PER_DRAW) revert MemberLimitReached(clubId);
         club.isMember[member] = true;
         club.members.push(member);
-        emit MemberJoined(clubId, member);
+        emit MemberJoined(clubId);
     }
 
     function _requireClub(uint256 clubId) private view returns (Club storage club) {

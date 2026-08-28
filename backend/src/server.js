@@ -6,7 +6,8 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
-import { getAddress, isAddress } from "viem";
+import { createPublicClient, createWalletClient, decodeEventLog, getAddress, http, isAddress } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -18,6 +19,10 @@ const PORT = Number(process.env.PORT || 8787);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://127.0.0.1:5174";
 const KEEPER_ENABLED = (process.env.KEEPER_ENABLED || "false") === "true";
 const KEEPER_INTERVAL_MS = Number(process.env.KEEPER_INTERVAL_MS || 30000);
+const CHAIN_ID = Number(process.env.CHAIN_ID || 11155111);
+const RPC_URL = process.env.RPC_URL || process.env.SEPOLIA_RPC_URL || "";
+const VEIL_CLUBS_ADDRESS = process.env.VEIL_CLUBS_ADDRESS || "";
+const KEEPER_PRIVATE_KEY = process.env.KEEPER_PRIVATE_KEY || "";
 const FAUCET_COOLDOWN_MS = Number(process.env.FAUCET_COOLDOWN_MS || 86400000);
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -33,6 +38,66 @@ const supabase =
 
 let writeQueue = Promise.resolve();
 let memoryStore = null;
+let keeperRunning = false;
+
+const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
+const SEPOLIA_CHAIN = {
+  id: CHAIN_ID,
+  name: "Sepolia",
+  nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: RPC_URL ? [RPC_URL] : [] } }
+};
+
+const VEIL_CLUBS_KEEPER_ABI = [
+  {
+    type: "function",
+    name: "clubView",
+    stateMutability: "view",
+    inputs: [{ name: "clubId", type: "uint256" }],
+    outputs: [
+      {
+        type: "tuple",
+        components: [
+          { name: "name", type: "string" },
+          { name: "description", type: "string" },
+          { name: "admin", type: "address" },
+          { name: "keeper", type: "address" },
+          { name: "minDeposit", type: "uint64" },
+          { name: "drawInterval", type: "uint64" },
+          { name: "nextDrawAt", type: "uint64" },
+          { name: "memberCount", type: "uint256" },
+          { name: "drawCount", type: "uint256" },
+          { name: "anonymousMembers", type: "bool" },
+          { name: "exists", type: "bool" }
+        ]
+      }
+    ]
+  },
+  {
+    type: "function",
+    name: "triggerDraw",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "clubId", type: "uint256" },
+      { name: "drawCommitment", type: "bytes32" }
+    ],
+    outputs: [
+      { name: "drawId", type: "uint256" },
+      { name: "prize", type: "bytes32" }
+    ]
+  },
+  {
+    type: "event",
+    name: "DrawExecuted",
+    inputs: [
+      { name: "clubId", type: "uint256", indexed: true },
+      { name: "drawId", type: "uint256", indexed: true },
+      { name: "prizeHandle", type: "bytes32", indexed: false },
+      { name: "drawCommitment", type: "bytes32", indexed: false },
+      { name: "memberCount", type: "uint256", indexed: false }
+    ]
+  }
+];
 
 const route = (method, pattern, handler) => ({ method, pattern, handler });
 
@@ -405,7 +470,7 @@ async function createClub(req, res) {
       drawIntervalMs,
       nextDrawAt,
       anonymousMembers: Boolean(body.anonymousMembers ?? true),
-      memberCount: 1,
+      memberCount: 0,
       encryptedTvlHandle: "encrypted",
       encryptedPrizeHandle: "encrypted",
       status: "CLUB_CREATED",
@@ -475,10 +540,158 @@ function normalizeAddress(value) {
   return getAddress(value);
 }
 
-async function runKeeper() {
-  if (KEEPER_ENABLED) {
-    console.warn("[keeper] disabled: backend no longer triggers synthetic draws. Use an onchain keeper service for VeilClubs.triggerDraw.");
+function sameAddress(left, right) {
+  return String(left || "").toLowerCase() === String(right || "").toLowerCase();
+}
+
+function getKeeperClients() {
+  if (!RPC_URL || !VEIL_CLUBS_ADDRESS || !KEEPER_PRIVATE_KEY) {
+    return null;
   }
+
+  const account = privateKeyToAccount(KEEPER_PRIVATE_KEY);
+  const transport = http(RPC_URL);
+  return {
+    account,
+    publicClient: createPublicClient({ chain: SEPOLIA_CHAIN, transport }),
+    walletClient: createWalletClient({ account, chain: SEPOLIA_CHAIN, transport })
+  };
+}
+
+function trackedContractClubIds(store) {
+  const ids = new Set(["0"]);
+  for (const club of store.clubs || []) {
+    if (club.contractClubId != null) ids.add(String(club.contractClubId));
+  }
+  return [...ids];
+}
+
+async function syncKeeperDraw({ clubId, clubName, txHash, receipt, publicClient }) {
+  let drawLog = null;
+  for (const log of receipt.logs || []) {
+    try {
+      const decoded = decodeEventLog({ abi: VEIL_CLUBS_KEEPER_ABI, data: log.data, topics: log.topics });
+      if (decoded.eventName === "DrawExecuted") {
+        drawLog = decoded;
+        break;
+      }
+    } catch {
+      // Ignore logs from other contracts touched by the transaction.
+    }
+  }
+
+  const drawId = drawLog?.args?.drawId?.toString();
+  const prizeHandle = drawLog?.args?.prizeHandle || "encrypted";
+  const memberCount = Number(drawLog?.args?.memberCount || 0);
+  const clubView = await publicClient.readContract({
+    address: VEIL_CLUBS_ADDRESS,
+    abi: VEIL_CLUBS_KEEPER_ABI,
+    functionName: "clubView",
+    args: [BigInt(clubId)]
+  });
+
+  await updateStore((store) => {
+    const club = store.clubs.find((item) => String(item.contractClubId ?? (item.id === "global" ? "0" : "")) === String(clubId));
+    if (club) {
+      club.memberCount = Number(clubView.memberCount || memberCount || club.memberCount || 0);
+      club.nextDrawAt = new Date(Number(clubView.nextDrawAt || 0) * 1000).toISOString();
+      club.encryptedPrizeHandle = "encrypted";
+      club.status = "ACTIVE";
+    }
+
+    if (drawId && !store.draws.some((draw) => String(draw.clubId) === String(clubId) && String(draw.drawNumber) === drawId)) {
+      store.draws.push({
+        id: `draw-${clubId}-${drawId}`,
+        drawNumber: Number(drawId),
+        clubId: String(clubId),
+        clubName,
+        winner: "winner-decrypts",
+        prizeHandle,
+        status: "EXECUTED_ONCHAIN",
+        txHash,
+        source: "keeper",
+        createdAt: new Date().toISOString()
+      });
+    }
+  });
+}
+
+async function runKeeperTick(clients) {
+  if (keeperRunning) return;
+  keeperRunning = true;
+
+  try {
+    const store = await readStore();
+    const ids = trackedContractClubIds(store);
+    const now = Math.floor(Date.now() / 1000);
+
+    for (const clubId of ids) {
+      const club = store.clubs.find((item) => String(item.contractClubId ?? (item.id === "global" ? "0" : "")) === String(clubId));
+      const clubName = club?.name || (clubId === "0" ? "Global Pool" : `Club ${clubId}`);
+      const clubView = await clients.publicClient.readContract({
+        address: VEIL_CLUBS_ADDRESS,
+        abi: VEIL_CLUBS_KEEPER_ABI,
+        functionName: "clubView",
+        args: [BigInt(clubId)]
+      });
+
+      if (!clubView.exists) continue;
+      if (!sameAddress(clients.account.address, clubView.keeper) && !sameAddress(clients.account.address, clubView.admin)) continue;
+      if (Number(clubView.memberCount || 0) === 0) continue;
+      if (Number(clubView.nextDrawAt || 0) > now) continue;
+
+      await clients.publicClient.simulateContract({
+        account: clients.account,
+        address: VEIL_CLUBS_ADDRESS,
+        abi: VEIL_CLUBS_KEEPER_ABI,
+        functionName: "triggerDraw",
+        args: [BigInt(clubId), ZERO_BYTES32]
+      });
+
+      const txHash = await clients.walletClient.writeContract({
+        address: VEIL_CLUBS_ADDRESS,
+        abi: VEIL_CLUBS_KEEPER_ABI,
+        functionName: "triggerDraw",
+        args: [BigInt(clubId), ZERO_BYTES32]
+      });
+      console.log(`[keeper] triggerDraw(${clubId}) submitted: ${txHash}`);
+
+      const receipt = await clients.publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status !== "success") {
+        console.warn(`[keeper] triggerDraw(${clubId}) reverted: ${txHash}`);
+        continue;
+      }
+
+      await syncKeeperDraw({ clubId, clubName, txHash, receipt, publicClient: clients.publicClient });
+      console.log(`[keeper] triggerDraw(${clubId}) confirmed: ${txHash}`);
+    }
+  } catch (error) {
+    console.warn(`[keeper] tick failed: ${error.shortMessage || error.message}`);
+  } finally {
+    keeperRunning = false;
+  }
+}
+
+async function runKeeper() {
+  if (!KEEPER_ENABLED) return;
+
+  let clients;
+  try {
+    clients = getKeeperClients();
+  } catch (error) {
+    console.warn(`[keeper] disabled: invalid keeper configuration (${error.shortMessage || error.message}).`);
+    return;
+  }
+  if (!clients) {
+    console.warn("[keeper] disabled: set RPC_URL, VEIL_CLUBS_ADDRESS, and KEEPER_PRIVATE_KEY to enable onchain draws.");
+    return;
+  }
+
+  console.log(`[keeper] enabled for ${clients.account.address}; polling every ${KEEPER_INTERVAL_MS}ms`);
+  await runKeeperTick(clients);
+  setInterval(() => {
+    runKeeperTick(clients);
+  }, KEEPER_INTERVAL_MS);
 }
 
 const server = createServer(async (req, res) => {

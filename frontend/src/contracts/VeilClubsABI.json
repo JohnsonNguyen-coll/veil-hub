@@ -281,12 +281,6 @@
         "type": "uint256"
       },
       {
-        "indexed": true,
-        "internalType": "address",
-        "name": "member",
-        "type": "address"
-      },
-      {
         "indexed": false,
         "internalType": "euint64",
         "name": "amountHandle",
@@ -323,12 +317,6 @@
         "internalType": "uint256",
         "name": "clubId",
         "type": "uint256"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "member",
-        "type": "address"
       }
     ],
     "name": "MemberJoined",
@@ -363,12 +351,6 @@
         "type": "uint256"
       },
       {
-        "indexed": true,
-        "internalType": "address",
-        "name": "member",
-        "type": "address"
-      },
-      {
         "indexed": false,
         "internalType": "euint64",
         "name": "amountHandle",
@@ -392,12 +374,6 @@
         "internalType": "uint256",
         "name": "drawId",
         "type": "uint256"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "member",
-        "type": "address"
       },
       {
         "indexed": false,

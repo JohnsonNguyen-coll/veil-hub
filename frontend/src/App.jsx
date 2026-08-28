@@ -5,11 +5,13 @@ import { decodeEventLog, formatUnits, parseUnits, toHex } from "viem";
 import * as THREE from "three";
 import {
   VEIL_CLUBS_ADDRESS,
+  KEEPER_ADDRESS,
   VEIL_TOKEN_ADDRESS,
   VEIL_UNDERLYING_TOKEN_ADDRESS,
   VeilClubsABI,
   VeilTokenABI,
   IS_CONTRACT_CONFIGURED,
+  IS_KEEPER_CONFIGURED,
   IS_TOKEN_CONFIGURED,
   BACKEND_URL
 } from "./contracts/config.js";
@@ -29,6 +31,18 @@ const defaultPools = [
 ];
 
 const defaultDrawHistory = [];
+
+const DRAW_FREQUENCY_OPTIONS = [
+  { label: "2 minutes (test)", seconds: 120, milliseconds: 120_000 },
+  { label: "Daily", seconds: 86_400, milliseconds: 86_400_000 },
+  { label: "Weekly", seconds: 604_800, milliseconds: 604_800_000 },
+  { label: "Monthly", seconds: 2_592_000, milliseconds: 2_592_000_000 }
+];
+
+const DIRECTORY_VISIBILITY_OPTIONS = [
+  { label: "Anonymous UI", anonymousMembers: true },
+  { label: "Public Directory", anonymousMembers: false }
+];
 
 const APP_ROUTES = {
   dashboard: "/app/dashboard",
@@ -70,6 +84,10 @@ function formatDrawTime(timestamp) {
   const seconds = Number(timestamp || 0);
   if (!seconds) return "24H 00M";
   return new Date(seconds * 1000).toLocaleString();
+}
+
+function sameAddress(left, right) {
+  return String(left || "").toLowerCase() === String(right || "").toLowerCase();
 }
 
 function VeilButton({ children, disabled = false, onClick, variant = "primary", className = "" }) {
@@ -1513,7 +1531,7 @@ function isUserRejectedRequest(error) {
 
 function txErrorMessage(error, fallback = "Transaction failed. Please try again.") {
   if (isUserRejectedRequest(error)) {
-    return "Bạn đã hủy giao dịch trong ví. Chưa có thao tác nào được thực hiện.";
+    return "You rejected the wallet transaction. No onchain action was performed.";
   }
   return error?.shortMessage || error?.message || fallback;
 }
@@ -1531,6 +1549,8 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
   const [userDeposit, setUserDeposit] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
   const toastTimerRef = useRef(null);
+  const seenDrawIdsRef = useRef(new Set());
+  const drawsHydratedRef = useRef(false);
 
   const closeToast = () => {
     if (toastTimerRef.current) {
@@ -1724,6 +1744,19 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
         if (drawsRes.ok) {
           const drawsData = await drawsRes.json();
           if (isMounted && Array.isArray(drawsData.draws)) {
+            const drawIds = drawsData.draws.map((draw) => draw.id || `${draw.clubId}-${draw.drawNumber}`);
+            if (drawsHydratedRef.current) {
+              const newDraw = drawsData.draws.find((draw) => !seenDrawIdsRef.current.has(draw.id || `${draw.clubId}-${draw.drawNumber}`));
+              if (newDraw) {
+                showToast(
+                  "Draw Executed",
+                  `${newDraw.clubName || "Pool"} draw #${newDraw.drawNumber || newDraw.id} was executed onchain by the keeper.`,
+                  newDraw.txHash || null
+                );
+              }
+            }
+            seenDrawIdsRef.current = new Set(drawIds);
+            drawsHydratedRef.current = true;
             setDrawsState(
               drawsData.draws.map((d) => [
                 `#${String(d.drawNumber || d.id).padStart(4, "0")}`,
@@ -1740,8 +1773,10 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
       }
     }
     loadData();
+    const pollId = window.setInterval(loadData, 30000);
     return () => {
       isMounted = false;
+      window.clearInterval(pollId);
     };
   }, [publicClient]);
 
@@ -1809,7 +1844,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     }
   };
 
-  const handleTriggerDraw = async (poolName = "Global Pool") => {
+  const handleTriggerDraw = async (poolName = "Global Pool", clubId = 0n) => {
     if (!isConnected || !address) {
       showToast("Wallet Required", "Connect your Sepolia wallet before triggering a draw.");
       return;
@@ -1820,21 +1855,62 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
       return;
     }
 
-    if (isConnected && IS_CONTRACT_CONFIGURED) {
-      try {
-        await submitContractTx({
-          signingTitle: "Triggering Draw",
-          signingMessage: "Confirm the FHE draw transaction in your wallet.",
-          confirmedTitle: "Draw Confirmed",
-          confirmedMessage: `FHE draw transaction confirmed for ${poolName}.`,
+    if (!publicClient) {
+      showToast("RPC Not Ready", "Sepolia RPC client is not ready yet. Please try again in a moment.");
+      return;
+    }
+
+    try {
+      const [clubView, owner] = await Promise.all([
+        readClubView(clubId),
+        publicClient.readContract({
           address: VEIL_CLUBS_ADDRESS,
           abi: VeilClubsABI,
-          functionName: "triggerDraw",
-          args: [0n, ZERO_BYTES32]
-        });
-      } catch (err) {
-        showToast(isUserRejectedRequest(err) ? "Draw Cancelled" : "Draw Error", txErrorMessage(err, "Failed to trigger draw."));
+          functionName: "owner"
+        })
+      ]);
+      const memberCount = Number(clubView?.memberCount || 0);
+      const nextDrawAt = Number(clubView?.nextDrawAt || 0);
+      const now = Math.floor(Date.now() / 1000);
+      const canTrigger =
+        sameAddress(address, clubView?.admin) ||
+        sameAddress(address, clubView?.keeper) ||
+        sameAddress(address, owner);
+
+      if (!canTrigger) {
+        showToast("Draw Restricted", "Only the pool admin, keeper, or contract owner can trigger this onchain draw.");
+        return;
       }
+      if (memberCount === 0) {
+        showToast("Draw Not Ready", "This pool has no members yet. At least one confirmed deposit is required.");
+        return;
+      }
+      if (nextDrawAt && now < nextDrawAt) {
+        showToast("Draw Too Early", `Next draw opens at ${formatDrawTime(nextDrawAt)}.`);
+        return;
+      }
+
+      await publicClient.simulateContract({
+        account: address,
+        address: VEIL_CLUBS_ADDRESS,
+        abi: VeilClubsABI,
+        functionName: "triggerDraw",
+        args: [BigInt(clubId), ZERO_BYTES32]
+      });
+
+      await submitContractTx({
+        signingTitle: "Triggering Draw",
+        signingMessage: "Confirm the FHE draw transaction in your wallet.",
+        confirmedTitle: "Draw Confirmed",
+        confirmedMessage: `FHE draw transaction confirmed for ${poolName}.`,
+        address: VEIL_CLUBS_ADDRESS,
+        abi: VeilClubsABI,
+        functionName: "triggerDraw",
+        args: [BigInt(clubId), ZERO_BYTES32]
+      });
+      await refreshClubView(clubId);
+    } catch (err) {
+      showToast(isUserRejectedRequest(err) ? "Draw Cancelled" : "Draw Error", txErrorMessage(err, "Failed to trigger draw."));
       return;
     }
   };
@@ -1964,7 +2040,12 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     }
   };
 
-  const handleCreateClub = async (name) => {
+  const handleCreateClub = async ({
+    name,
+    minDeposit = "25",
+    drawFrequency = DRAW_FREQUENCY_OPTIONS[2],
+    directoryVisibility = DIRECTORY_VISIBILITY_OPTIONS[0]
+  }) => {
     if (!isConnected || !address) {
       showToast("Wallet Required", "Connect your Sepolia wallet before creating a club.");
       return;
@@ -1976,6 +2057,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
 
     if (isConnected && IS_CONTRACT_CONFIGURED) {
       try {
+        const minDepositUnits = parseTokenAmount(minDeposit);
         const { txHash, receipt } = await submitContractTx({
           signingTitle: "Creating Club",
           signingMessage: "Confirm the private club creation transaction in your wallet.",
@@ -1984,7 +2066,13 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
           address: VEIL_CLUBS_ADDRESS,
           abi: VeilClubsABI,
           functionName: "createClub",
-          args: [name || "Private Club", "Confidential Club", 25n, 604800n, true]
+          args: [
+            name || "Private Club",
+            "Confidential Club",
+            minDepositUnits,
+            BigInt(drawFrequency.seconds),
+            Boolean(directoryVisibility.anonymousMembers)
+          ]
         });
         const clubCreatedLog = receipt?.logs
           ?.map((log) => {
@@ -2001,6 +2089,19 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
           return;
         }
 
+        if (IS_KEEPER_CONFIGURED) {
+          await submitContractTx({
+            signingTitle: "Setting Keeper",
+            signingMessage: "Confirm keeper assignment so this club can run automatic draws.",
+            confirmedTitle: "Keeper Set",
+            confirmedMessage: "Automatic draw keeper configured for this club.",
+            address: VEIL_CLUBS_ADDRESS,
+            abi: VeilClubsABI,
+            functionName: "setKeeper",
+            args: [BigInt(contractClubId), KEEPER_ADDRESS]
+          });
+        }
+
         const res = await fetch(`${BACKEND_URL}/api/clubs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2009,6 +2110,9 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             scope: "PRIVATE",
             admin: address,
             keeper: address,
+            minDeposit,
+            drawIntervalMs: drawFrequency.milliseconds,
+            anonymousMembers: Boolean(directoryVisibility.anonymousMembers),
             txHash,
             contractClubId
           })
@@ -2025,8 +2129,8 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
           name: created.name,
           scope: created.scope,
           tvl: encryptedLabel(created.encryptedTvlHandle),
-          members: String(created.memberCount || 1),
-          draw: "07D 00H",
+          members: String(created.memberCount ?? 0),
+          draw: created.nextDrawAt ? new Date(created.nextDrawAt).toLocaleString() : formatDrawTime(drawFrequency.seconds),
           prize: "•••••• USDC",
           status: created.status || "ACTIVE"
         };
@@ -2086,7 +2190,6 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onDecrypt={handleDecrypt}
             onHideBalance={handleHideBalance}
             onDeposit={handleDeposit}
-            onTriggerDraw={() => handleTriggerDraw("Global Pool")}
             pool={poolsState.find((pool) => pool.id === "global" || String(pool.contractId) === "0") || defaultPools[0]}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
           />
@@ -2100,12 +2203,11 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onHideBalance={handleHideBalance}
             onDeposit={handleDeposit}
             onJoinClub={handleJoinClub}
-            onTriggerDraw={handleTriggerDraw}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
           />
         ) : null}
         {activePage === "draws" ? (
-          <DrawsPage draws={drawsState} onTriggerDraw={() => handleTriggerDraw("Global Pool")} />
+          <DrawsPage draws={drawsState} />
         ) : null}
         {activePage === "account" ? (
           <AccountPage
@@ -2188,7 +2290,7 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
   );
 }
 
-function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposit, onTriggerDraw, pool, walletBalance }) {
+function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposit, pool, walletBalance }) {
   return (
     <div>
       <PageHeader
@@ -2197,9 +2299,6 @@ function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposit, onTr
         title="Global No-Loss Pool"
         action={
           <div className="flex flex-wrap gap-3">
-            <VeilButton onClick={onTriggerDraw} variant="secondary">
-              Trigger FHE Draw
-            </VeilButton>
             <VeilButton onClick={() => onDeposit(100, "Global Pool")}>Quick Deposit 100 USDC</VeilButton>
           </div>
         }
@@ -2229,7 +2328,7 @@ function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposit, onTr
   );
 }
 
-function PrivateClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideBalance, onJoinClub, onDeposit, onTriggerDraw, walletBalance }) {
+function PrivateClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideBalance, onJoinClub, onDeposit, walletBalance }) {
   const privateClubs = clubs.filter((pool) => pool.scope === "PRIVATE");
   const [selectedClub, setSelectedClub] = useState(privateClubs[0] || clubs[0]);
 
@@ -2239,7 +2338,6 @@ function PrivateClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
         body="Create or join invitation-only prize pools. Each club has independent encrypted deposits, private odds, yield routing, and confidential prize claims."
         kicker="Social Yield"
         title="Private Clubs"
-        action={<VeilButton onClick={() => onCreateClub("Sovereign Alpha")}>+ Quick New Club</VeilButton>}
       />
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
         <Panel title="Club Directory">
@@ -2270,7 +2368,6 @@ function PrivateClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
             onDecrypt={onDecrypt}
             onHideBalance={onHideBalance}
             onDeposit={(amt) => onDeposit(amt, selectedClub?.name || "Private Club", selectedClub?.contractId || 0n)}
-            onTriggerDraw={() => onTriggerDraw(selectedClub?.name || "Private Club")}
             walletBalance={walletBalance}
           />
         </Panel>
@@ -2287,14 +2384,13 @@ function PrivateClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
   );
 }
 
-function DrawsPage({ draws, onTriggerDraw }) {
+function DrawsPage({ draws }) {
   return (
     <div>
       <PageHeader
         body="Draws execute onchain over confidential pool state. The frontend only receives public events and ciphertext handles until an authorized user decrypts."
         kicker="Prize Draw"
         title="Confidential Draw History"
-        action={<VeilButton onClick={onTriggerDraw}>Trigger FHE Draw</VeilButton>}
       />
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
         <Panel title="Recent Draws">
@@ -2513,6 +2609,25 @@ function LabelInput({ label, placeholder, value, onChange }) {
   );
 }
 
+function SelectInput({ label, options, value, onChange }) {
+  return (
+    <label className="flex flex-col gap-2">
+      <span className="font-label-caps text-label-caps text-veil-white opacity-50 uppercase">{label}</span>
+      <select
+        className="bg-veil-gray-dark border border-veil-gray-light text-veil-white font-data-sm text-data-sm px-4 py-4 focus:border-veil-purple focus:ring-0"
+        onChange={onChange}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function DrawEngine() {
   const steps = [
     ["01", "Read encrypted balances", "euint64 weights stay confidential onchain"],
@@ -2536,7 +2651,7 @@ function DrawEngine() {
   );
 }
 
-function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, onTriggerDraw, walletBalance }) {
+function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, walletBalance }) {
   if (!club) {
     return (
       <div className="p-6 border border-veil-gray-light bg-veil-gray-dark text-veil-white opacity-70 font-data-sm">
@@ -2565,9 +2680,6 @@ function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, on
         <VeilButton onClick={() => navigator.clipboard && navigator.clipboard.writeText(`VC-${(club.id || "").toUpperCase()}`)} variant="secondary">
           Copy Invite
         </VeilButton>
-        <VeilButton onClick={onTriggerDraw} variant="secondary">
-          Trigger FHE Draw
-        </VeilButton>
       </div>
     </div>
   );
@@ -2576,10 +2688,17 @@ function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, on
 function ClubForm({ onCreate }) {
   const [name, setName] = useState("");
   const [minDeposit, setMinDeposit] = useState("25");
+  const [drawFrequencyIndex, setDrawFrequencyIndex] = useState("2");
+  const [directoryVisibilityIndex, setDirectoryVisibilityIndex] = useState("0");
 
   const handleSubmit = () => {
     if (onCreate) {
-      onCreate(name || "Secret Vault Club");
+      onCreate({
+        name: name || "Secret Vault Club",
+        minDeposit,
+        drawFrequency: DRAW_FREQUENCY_OPTIONS[Number(drawFrequencyIndex)] || DRAW_FREQUENCY_OPTIONS[2],
+        directoryVisibility: DIRECTORY_VISIBILITY_OPTIONS[Number(directoryVisibilityIndex)] || DIRECTORY_VISIBILITY_OPTIONS[0]
+      });
       setName("");
     }
   };
@@ -2588,8 +2707,18 @@ function ClubForm({ onCreate }) {
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <LabelInput label="Club Name" onChange={(e) => setName(e.target.value)} placeholder="Noir Syndicate" value={name} />
       <LabelInput label="Min Deposit" onChange={(e) => setMinDeposit(e.target.value)} placeholder="25 USDC" value={minDeposit} />
-      <LabelInput label="Draw Frequency" placeholder="Weekly" value="Weekly" />
-      <LabelInput label="Member Visibility" placeholder="Anonymous" value="Anonymous" />
+      <SelectInput
+        label="Draw Frequency"
+        onChange={(e) => setDrawFrequencyIndex(e.target.value)}
+        options={DRAW_FREQUENCY_OPTIONS.map((option, index) => ({ label: option.label, value: String(index) }))}
+        value={drawFrequencyIndex}
+      />
+      <SelectInput
+        label="Directory Visibility"
+        onChange={(e) => setDirectoryVisibilityIndex(e.target.value)}
+        options={DIRECTORY_VISIBILITY_OPTIONS.map((option, index) => ({ label: option.label, value: String(index) }))}
+        value={directoryVisibilityIndex}
+      />
       <div className="md:col-span-2">
         <VeilButton onClick={handleSubmit}>Create Encrypted Club</VeilButton>
       </div>

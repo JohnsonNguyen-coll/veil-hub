@@ -89,6 +89,7 @@ async function main() {
   const clubsContract = compileOutput.contracts["contracts/VeilClubs.sol"].VeilClubs;
   syncFrontendAbis(compileOutput);
   const depositTokenAddress = process.env.DEPOSIT_TOKEN_ADDRESS || process.env.VEIL_TOKEN_ADDRESS || ZAMA_SEPOLIA_CUSDC_WRAPPER;
+  const keeperAddress = process.env.KEEPER_ADDRESS;
 
   console.log("\n🔐 Deposit token:", depositTokenAddress);
   console.log("   Default is Zama official Sepolia cUSDC wrapper.");
@@ -101,17 +102,34 @@ async function main() {
   const clubsAddress = await clubs.getAddress();
   console.log("✅ VeilClubs deployed at:", clubsAddress);
 
+  if (keeperAddress && ethers.isAddress(keeperAddress)) {
+    console.log("\n🕒 Setting Global Pool keeper:", keeperAddress);
+    const tx = await clubs.setKeeper(0, keeperAddress);
+    await tx.wait();
+    console.log("✅ Global Pool keeper configured.");
+  } else if (keeperAddress) {
+    console.warn("⚠️ Ignoring invalid KEEPER_ADDRESS:", keeperAddress);
+  }
+
   console.log("\n==================================================");
   console.log("🎉 DEPLOY THÀNH CÔNG TRỌN VẸN TRÊN SEPOLIA!");
   console.log("==================================================");
   console.log(`VITE_VEIL_TOKEN_ADDRESS=${depositTokenAddress}`);
   console.log(`VITE_VEIL_UNDERLYING_TOKEN_ADDRESS=${ZAMA_SEPOLIA_USDC_UNDERLYING}`);
   console.log(`VITE_VEIL_CLUBS_ADDRESS=${clubsAddress}`);
+  if (keeperAddress && ethers.isAddress(keeperAddress)) {
+    console.log(`VITE_KEEPER_ADDRESS=${keeperAddress}`);
+  }
   console.log("==================================================");
 
   upsertEnvValue(path.resolve("..", "frontend", ".env"), "VITE_VEIL_TOKEN_ADDRESS", depositTokenAddress);
   upsertEnvValue(path.resolve("..", "frontend", ".env"), "VITE_VEIL_UNDERLYING_TOKEN_ADDRESS", ZAMA_SEPOLIA_USDC_UNDERLYING);
   upsertEnvValue(path.resolve("..", "frontend", ".env"), "VITE_VEIL_CLUBS_ADDRESS", clubsAddress);
+  if (keeperAddress && ethers.isAddress(keeperAddress)) {
+    upsertEnvValue(path.resolve("..", "frontend", ".env"), "VITE_KEEPER_ADDRESS", keeperAddress);
+    upsertEnvValue(path.resolve("..", "backend", ".env"), "KEEPER_ENABLED", "true");
+    upsertEnvValue(path.resolve("..", "backend", ".env"), "KEEPER_INTERVAL_MS", "30000");
+  }
   upsertEnvValue(path.resolve("..", "backend", ".env"), "VEIL_TOKEN_ADDRESS", depositTokenAddress);
   upsertEnvValue(path.resolve("..", "backend", ".env"), "VEIL_UNDERLYING_TOKEN_ADDRESS", ZAMA_SEPOLIA_USDC_UNDERLYING);
   upsertEnvValue(path.resolve("..", "backend", ".env"), "VEIL_CLUBS_ADDRESS", clubsAddress);
