@@ -13,7 +13,7 @@ const ZAMA_SEPOLIA_CUSDC_WRAPPER = "0x7c5BF43B851c1dff1a4feE8dB225b87f2C223639";
 const ZAMA_SEPOLIA_USDC_UNDERLYING = "0x9b5Cd13b8eFbB58Dc25A05CF411D8056058aDFfF";
 
 async function getWorkingProvider(customUrl) {
-  const candidateUrls = customUrl ? [customUrl, ...DEFAULT_RPCS] : DEFAULT_RPCS;
+  const candidateUrls = customUrl ? [...DEFAULT_RPCS, customUrl] : DEFAULT_RPCS;
   for (const url of candidateUrls) {
     try {
       const provider = new ethers.JsonRpcProvider(url, 11155111n, { staticNetwork: true });

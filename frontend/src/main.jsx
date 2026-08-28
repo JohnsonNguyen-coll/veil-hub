@@ -32,7 +32,7 @@ const wagmiConfig = getDefaultConfig({
   projectId: walletConnectProjectId,
   chains: [sepolia],
   transports: {
-    [sepolia.id]: fallback(rpcEndpoints)
+    [sepolia.id]: fallback(rpcEndpoints, { rank: false })
   }
 });
 

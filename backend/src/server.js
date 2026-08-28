@@ -6,7 +6,7 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
-import { createPublicClient, createWalletClient, decodeEventLog, getAddress, http, isAddress } from "viem";
+import { createPublicClient, createWalletClient, decodeEventLog, fallback, getAddress, http, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,11 +41,18 @@ let memoryStore = null;
 let keeperRunning = false;
 
 const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
+const PUBLIC_RPC_URLS = [
+  "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://sepolia.gateway.tenderly.co",
+  "https://1rpc.io/sepolia",
+  "https://gateway.tenderly.co/public/sepolia",
+  "https://rpc2.sepolia.org"
+];
 const SEPOLIA_CHAIN = {
   id: CHAIN_ID,
   name: "Sepolia",
   nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: RPC_URL ? [RPC_URL] : [] } }
+  rpcUrls: { default: { http: RPC_URL ? [RPC_URL] : PUBLIC_RPC_URLS } }
 };
 
 const VEIL_CLUBS_KEEPER_ABI = [
@@ -545,12 +552,17 @@ function sameAddress(left, right) {
 }
 
 function getKeeperClients() {
-  if (!RPC_URL || !VEIL_CLUBS_ADDRESS || !KEEPER_PRIVATE_KEY) {
+  if (!VEIL_CLUBS_ADDRESS || !KEEPER_PRIVATE_KEY) {
     return null;
   }
 
   const account = privateKeyToAccount(KEEPER_PRIVATE_KEY);
-  const transport = http(RPC_URL);
+  const rpcTransports = PUBLIC_RPC_URLS.map((url) => http(url));
+  if (RPC_URL && !PUBLIC_RPC_URLS.includes(RPC_URL)) {
+    rpcTransports.push(http(RPC_URL));
+  }
+  const transport = fallback(rpcTransports, { rank: false });
+
   return {
     account,
     publicClient: createPublicClient({ chain: SEPOLIA_CHAIN, transport }),
