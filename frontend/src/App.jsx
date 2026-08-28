@@ -61,6 +61,17 @@ function getRouteState(pathname) {
   return { view: "app", activePage: PATH_TO_PAGE[pathname] || "dashboard" };
 }
 
+function encryptedLabel(value) {
+  if (!value || String(value).includes("ciphertext:empty")) return "encrypted";
+  return "encrypted";
+}
+
+function formatDrawTime(timestamp) {
+  const seconds = Number(timestamp || 0);
+  if (!seconds) return "24H 00M";
+  return new Date(seconds * 1000).toLocaleString();
+}
+
 function VeilButton({ children, disabled = false, onClick, variant = "primary", className = "" }) {
   const variantClass =
     variant === "secondary"
@@ -1549,6 +1560,42 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     maximumFractionDigits: 6
   });
 
+  const applyClubView = (clubId, clubView) => {
+    if (!clubView) return;
+    const contractId = String(clubId);
+    setPoolsState((prev) =>
+      prev.map((pool) => {
+        if (String(pool.contractId ?? (pool.id === "global" ? "0" : "")) !== contractId) return pool;
+        return {
+          ...pool,
+          members: String(clubView.memberCount ?? 0),
+          draw: formatDrawTime(clubView.nextDrawAt),
+          status: clubView.exists === false ? "INACTIVE" : pool.status,
+          tvl: "encrypted"
+        };
+      })
+    );
+  };
+
+  const readClubView = async (clubId) => {
+    if (!publicClient || !IS_CONTRACT_CONFIGURED) return null;
+    return publicClient.readContract({
+      address: VEIL_CLUBS_ADDRESS,
+      abi: VeilClubsABI,
+      functionName: "clubView",
+      args: [BigInt(clubId)]
+    });
+  };
+
+  const refreshClubView = async (clubId) => {
+    try {
+      const clubView = await readClubView(clubId);
+      applyClubView(clubId, clubView);
+    } catch (err) {
+      console.warn(`Could not refresh onchain club ${clubId}.`, err);
+    }
+  };
+
   const submitContractTx = async ({ signingTitle, signingMessage, confirmedTitle, confirmedMessage, ...request }) => {
     if (!walletClient) {
       throw new Error("Wallet client is not ready. Reconnect your wallet and try again.");
@@ -1639,20 +1686,40 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
         if (clubsRes.ok) {
           const clubsData = await clubsRes.json();
           if (isMounted && Array.isArray(clubsData.clubs) && clubsData.clubs.length > 0) {
+            const normalizedClubs = clubsData.clubs.map((c) => ({
+              id: c.id,
+              name: c.name,
+              scope: c.scope,
+              contractId: c.contractClubId ?? c.contractId ?? (c.id === "global" ? "0" : null),
+              tvl: encryptedLabel(c.encryptedTvlHandle),
+              members: String(c.memberCount ?? 0),
+              draw: c.nextDrawAt ? new Date(c.nextDrawAt).toLocaleString() : "24H 00M",
+              prize: "•••••• USDC",
+              status: c.status || "ACTIVE"
+            }));
             setPoolsState(
-              clubsData.clubs.map((c) => ({
-                id: c.id,
-                name: c.name,
-                scope: c.scope,
-                contractId: c.contractClubId ?? c.contractId ?? (c.id === "global" ? "0" : null),
-                tvl: c.encryptedTvlHandle || "encrypted",
-                members: String(c.memberCount ?? 0),
-                draw: c.nextDrawAt ? new Date(c.nextDrawAt).toLocaleString() : "24H 00M",
-                prize: "•••••• USDC",
-                status: c.status || "ACTIVE"
-              }))
+              normalizedClubs
             );
+            if (publicClient && IS_CONTRACT_CONFIGURED) {
+              await Promise.all(
+                normalizedClubs
+                  .map((club) => club.contractId)
+                  .filter((contractId) => contractId != null)
+                  .map(async (contractId) => {
+                    try {
+                      const clubView = await readClubView(contractId);
+                      if (isMounted) applyClubView(contractId, clubView);
+                    } catch (err) {
+                      console.warn(`Could not refresh onchain club ${contractId}.`, err);
+                    }
+                  })
+              );
+            }
           }
+        }
+        if (isMounted && publicClient && IS_CONTRACT_CONFIGURED) {
+          const globalView = await readClubView(0n);
+          if (isMounted) applyClubView(0n, globalView);
         }
         if (drawsRes.ok) {
           const drawsData = await drawsRes.json();
@@ -1676,7 +1743,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [publicClient]);
 
   const handleDeposit = async (amount, poolName = "Global Pool", clubId = 0n) => {
     if (!isConnected || !address) {
@@ -1735,6 +1802,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
       });
       setUserDeposit((prev) => prev + Number(formatUnits(units, TOKEN_DECIMALS)));
       setIsDecrypted(false);
+      await refreshClubView(clubId);
     } catch (err) {
       console.warn("Encrypted deposit failed:", err);
       showToast(isUserRejectedRequest(err) ? "Deposit Cancelled" : "Deposit Failed", txErrorMessage(err, "Failed to submit encrypted deposit."));
@@ -1956,7 +2024,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
           contractId: created.contractClubId,
           name: created.name,
           scope: created.scope,
-          tvl: created.encryptedTvlHandle || "encrypted",
+          tvl: encryptedLabel(created.encryptedTvlHandle),
           members: String(created.memberCount || 1),
           draw: "07D 00H",
           prize: "•••••• USDC",
@@ -2019,6 +2087,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onHideBalance={handleHideBalance}
             onDeposit={handleDeposit}
             onTriggerDraw={() => handleTriggerDraw("Global Pool")}
+            pool={poolsState.find((pool) => pool.id === "global" || String(pool.contractId) === "0") || defaultPools[0]}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
           />
         ) : null}
@@ -2045,6 +2114,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             onClaim={handleClaim}
             onDecrypt={handleDecrypt}
             onFaucet={handleFaucet}
+            onHideBalance={handleHideBalance}
             onWithdraw={handleWithdraw}
             userDeposit={getDisplayBalance(userDeposit)}
             walletBalance={getDisplayBalance(walletBalance)}
@@ -2118,7 +2188,7 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
   );
 }
 
-function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposit, onTriggerDraw, walletBalance }) {
+function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposit, onTriggerDraw, pool, walletBalance }) {
   return (
     <div>
       <PageHeader
@@ -2135,8 +2205,8 @@ function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposit, onTr
         }
       />
       <section className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-veil-gray-light mb-8">
-        <MetricCard label="Encrypted TVL" value="encrypted" status="TOTAL_HIDDEN" />
-        <MetricCard label="Members" value="0" status="PUBLIC_COUNT" />
+        <MetricCard label="Encrypted TVL" value={pool?.tvl || "encrypted"} status="TOTAL_HIDDEN" />
+        <MetricCard label="Members" value={pool?.members || "0"} status="PUBLIC_COUNT" />
         <MetricCard label="Yield Strategy" value="ONCHAIN" status="CONFIG_REQUIRED" />
         <MetricCard label="Prize" value="••••••" status="WINNER_DECRYPTS" />
       </section>
@@ -2241,7 +2311,7 @@ function DrawsPage({ draws, onTriggerDraw }) {
   );
 }
 
-function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, onFaucet, onWithdraw, walletBalance }) {
+function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, onFaucet, onHideBalance, onWithdraw, walletBalance }) {
   return (
     <div>
       <PageHeader
@@ -2255,12 +2325,12 @@ function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border border-veil-gray-light">
             <MetricCard
               label="Wallet cUSDC"
-              value={`${walletBalance}.00`}
-              status="AVAILABLE_BALANCE"
+              value={isDecrypted ? `${walletBalance} USDC` : "••••••"}
+              status={isDecrypted ? "DECRYPTED" : "CLICK_DECRYPT"}
             />
             <MetricCard
               label="Global Balance"
-              value={isDecrypted ? `${userDeposit}.00 USDC` : "••••••"}
+              value={isDecrypted ? `${userDeposit} USDC` : "••••••"}
               status={isDecrypted ? "DECRYPTED" : "CLICK_DECRYPT"}
             />
             <MetricCard
@@ -2286,6 +2356,11 @@ function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, 
             <VeilButton onClick={onDecrypt}>
               {isDecrypted ? "Re-decrypt Balance" : "Decrypt Balance"}
             </VeilButton>
+            {isDecrypted ? (
+              <VeilButton onClick={onHideBalance} variant="secondary">
+                Hide Balance
+              </VeilButton>
+            ) : null}
             <VeilButton disabled={isClaimed} onClick={onClaim} variant="secondary">
               {isClaimed ? "Prize Claimed" : "Claim Prize"}
             </VeilButton>
@@ -2304,10 +2379,10 @@ function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, 
 
 function MetricCard({ label, value, status }) {
   return (
-    <div className="bg-veil-gray-dark p-6 border-r border-b last:border-r-0 border-veil-gray-light min-h-[132px]">
+    <div className="bg-veil-gray-dark p-6 border-r border-b last:border-r-0 border-veil-gray-light min-h-[132px] min-w-0">
       <span className="font-label-caps text-label-caps text-veil-white opacity-50 uppercase">{label}</span>
-      <div className="font-data-display text-data-display text-veil-white font-bold mt-4">{value}</div>
-      <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase mt-2">&gt; {status}</div>
+      <div className="font-data-display text-data-display text-veil-white font-bold mt-4 break-words">{value}</div>
+      <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase mt-2 break-words">&gt; {status}</div>
     </div>
   );
 }
@@ -2461,7 +2536,7 @@ function DrawEngine() {
   );
 }
 
-function ClubDetail({ club, isDecrypted, onDecrypt, onDeposit, onTriggerDraw, walletBalance }) {
+function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, onTriggerDraw, walletBalance }) {
   if (!club) {
     return (
       <div className="p-6 border border-veil-gray-light bg-veil-gray-dark text-veil-white opacity-70 font-data-sm">
@@ -2484,8 +2559,8 @@ function ClubDetail({ club, isDecrypted, onDecrypt, onDeposit, onTriggerDraw, wa
       </div>
       <div className="flex flex-wrap gap-3">
         <VeilButton onClick={() => onDeposit(50)}>Quick Deposit 50</VeilButton>
-        <VeilButton onClick={onDecrypt} variant="secondary">
-          {isDecrypted ? `Balance ${walletBalance} cUSDC` : "Decrypt Balance"}
+        <VeilButton onClick={isDecrypted ? onHideBalance : onDecrypt} variant="secondary">
+          {isDecrypted ? `Hide Balance ${walletBalance} cUSDC` : "Decrypt Balance"}
         </VeilButton>
         <VeilButton onClick={() => navigator.clipboard && navigator.clipboard.writeText(`VC-${(club.id || "").toUpperCase()}`)} variant="secondary">
           Copy Invite
