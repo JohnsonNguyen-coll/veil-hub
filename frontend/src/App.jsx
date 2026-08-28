@@ -1366,6 +1366,7 @@ const FAUCET_UNDERLYING_AMOUNT = 100_000_000n;
 const TOKEN_DECIMALS = 6;
 const MAX_EUINT64 = (1n << 64n) - 1n;
 const DEFAULT_SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
+const OPERATOR_APPROVAL_SECONDS = 24 * 60 * 60;
 let fheSdkInitPromise;
 let fheInstancePromise;
 
@@ -1385,6 +1386,10 @@ function parseTokenAmount(amount) {
   if (units <= 0n) throw new Error("Amount must be greater than 0.");
   if (units > MAX_EUINT64) throw new Error("Amount is too large for euint64.");
   return units;
+}
+
+function operatorApprovalExpiry() {
+  return Math.floor(Date.now() / 1000) + OPERATOR_APPROVAL_SECONDS;
 }
 
 async function encryptUint64Input(contractAddress, userAddress, amount) {
@@ -1514,10 +1519,30 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
   const [isClaimed, setIsClaimed] = useState(false);
   const [userDeposit, setUserDeposit] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
+  const toastTimerRef = useRef(null);
 
-  const showToast = (title, message, txHash = null) => {
+  const closeToast = () => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToast(null);
+  };
+
+  const showToast = (title, message, txHash = null, options = {}) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+
     setToast({ title, message, txHash });
-    window.setTimeout(() => setToast(null), 8000);
+    const duration = options.duration ?? (txHash ? 60000 : 15000);
+    if (duration) {
+      toastTimerRef.current = window.setTimeout(() => {
+        toastTimerRef.current = null;
+        setToast(null);
+      }, duration);
+    }
   };
 
   const getDisplayBalance = (value) => Number(value || 0).toLocaleString(undefined, {
@@ -1529,7 +1554,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
       throw new Error("Wallet client is not ready. Reconnect your wallet and try again.");
     }
 
-    showToast(signingTitle, signingMessage);
+    showToast(signingTitle, signingMessage, null, { duration: null });
     const txHash = await walletClient.writeContract({
       account: address,
       ...request
@@ -1664,8 +1689,33 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
       return;
     }
 
+    if (!publicClient) {
+      showToast("RPC Not Ready", "Sepolia RPC client is not ready yet. Please try again in a moment.");
+      return;
+    }
+
     try {
       const units = parseTokenAmount(amount || "100");
+      const poolIsOperator = await publicClient.readContract({
+        address: VEIL_TOKEN_ADDRESS,
+        abi: VeilTokenABI,
+        functionName: "isOperator",
+        args: [address, VEIL_CLUBS_ADDRESS]
+      });
+
+      if (!poolIsOperator) {
+        await submitContractTx({
+          signingTitle: "Authorizing Pool",
+          signingMessage: "Confirm 24-hour cUSDC operator access so VeilClubs can move your encrypted deposit.",
+          confirmedTitle: "Pool Authorized",
+          confirmedMessage: "VeilClubs is authorized to submit your encrypted cUSDC deposit.",
+          address: VEIL_TOKEN_ADDRESS,
+          abi: VeilTokenABI,
+          functionName: "setOperator",
+          args: [VEIL_CLUBS_ADDRESS, operatorApprovalExpiry()]
+        });
+      }
+
       showToast("Encrypting Deposit", `Creating a real Zama encrypted input proof for ${poolName}.`);
       const encrypted = await encryptUint64Input(VEIL_CLUBS_ADDRESS, address, units);
       await submitContractTx({
@@ -1937,7 +1987,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
 
   return (
     <main className="flex-grow pt-32 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full">
-      <ToastNotification onClose={() => setToast(null)} toast={toast} />
+      <ToastNotification onClose={closeToast} toast={toast} />
 
       <section className="bg-veil-black">
         {activePage === "dashboard" ? (
@@ -1954,6 +2004,8 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
         ) : null}
         {activePage === "global" ? (
           <GlobalPoolPage
+            isDecrypted={isDecrypted}
+            onDecrypt={handleDecrypt}
             onDeposit={handleDeposit}
             onTriggerDraw={() => handleTriggerDraw("Global Pool")}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
@@ -1962,7 +2014,9 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
         {activePage === "clubs" ? (
           <PrivateClubsPage
             clubs={poolsState}
+            isDecrypted={isDecrypted}
             onCreateClub={handleCreateClub}
+            onDecrypt={handleDecrypt}
             onDeposit={handleDeposit}
             onJoinClub={handleJoinClub}
             onTriggerDraw={handleTriggerDraw}
@@ -2052,7 +2106,7 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
   );
 }
 
-function GlobalPoolPage({ onDeposit, onTriggerDraw, walletBalance }) {
+function GlobalPoolPage({ isDecrypted, onDecrypt, onDeposit, onTriggerDraw, walletBalance }) {
   return (
     <div>
       <PageHeader
@@ -2076,7 +2130,7 @@ function GlobalPoolPage({ onDeposit, onTriggerDraw, walletBalance }) {
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
         <Panel title="Deposit Flow">
-          <TransactionForm mode="global" onDeposit={onDeposit} walletBalance={walletBalance} />
+          <TransactionForm isDecrypted={isDecrypted} mode="global" onDecrypt={onDecrypt} onDeposit={onDeposit} walletBalance={walletBalance} />
         </Panel>
         <Panel title="Draw Engine">
           <DrawEngine />
@@ -2086,7 +2140,7 @@ function GlobalPoolPage({ onDeposit, onTriggerDraw, walletBalance }) {
   );
 }
 
-function PrivateClubsPage({ clubs, onCreateClub, onJoinClub, onDeposit, onTriggerDraw }) {
+function PrivateClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onJoinClub, onDeposit, onTriggerDraw, walletBalance }) {
   const privateClubs = clubs.filter((pool) => pool.scope === "PRIVATE");
   const [selectedClub, setSelectedClub] = useState(privateClubs[0] || clubs[0]);
 
@@ -2123,8 +2177,11 @@ function PrivateClubsPage({ clubs, onCreateClub, onJoinClub, onDeposit, onTrigge
         <Panel title="Selected Club">
           <ClubDetail
             club={selectedClub}
+            isDecrypted={isDecrypted}
+            onDecrypt={onDecrypt}
             onDeposit={(amt) => onDeposit(amt, selectedClub?.name || "Private Club", selectedClub?.contractId || 0n)}
             onTriggerDraw={() => onTriggerDraw(selectedClub?.name || "Private Club")}
+            walletBalance={walletBalance}
           />
         </Panel>
       </section>
@@ -2305,18 +2362,23 @@ function DataTable({ columns, rows }) {
   );
 }
 
-function TransactionForm({ mode, onDeposit, walletBalance }) {
+function TransactionForm({ isDecrypted, mode, onDecrypt, onDeposit, walletBalance }) {
   const [amount, setAmount] = useState("100.00");
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
       <div>
         <LabelInput label="Amount" onChange={(e) => setAmount(e.target.value)} placeholder="100.00" value={amount} />
-        {walletBalance != null && (
-          <p className="font-data-sm text-data-sm text-veil-purple mt-1 ml-1">
-            Balance: {walletBalance} cUSDC
+        <div className="flex flex-wrap items-center gap-2 mt-2 ml-1">
+          <p className="font-data-sm text-data-sm text-veil-purple">
+            Balance: {isDecrypted && walletBalance != null ? `${walletBalance} cUSDC` : "hidden"}
           </p>
-        )}
+          {!isDecrypted && (
+            <button className="font-data-sm text-data-sm text-veil-white underline opacity-70 hover:opacity-100" onClick={onDecrypt} type="button">
+              Decrypt Balance
+            </button>
+          )}
+        </div>
       </div>
       <LabelInput label="Token" placeholder="cUSDC" value="cUSDC (ERC-7984)" />
       <VeilButton className="h-[50px]" onClick={() => onDeposit && onDeposit(amount, mode === "global" ? "Global Pool" : "Private Club")}>
@@ -2368,7 +2430,7 @@ function DrawEngine() {
   );
 }
 
-function ClubDetail({ club, onDeposit, onTriggerDraw }) {
+function ClubDetail({ club, isDecrypted, onDecrypt, onDeposit, onTriggerDraw, walletBalance }) {
   if (!club) {
     return (
       <div className="p-6 border border-veil-gray-light bg-veil-gray-dark text-veil-white opacity-70 font-data-sm">
@@ -2391,6 +2453,9 @@ function ClubDetail({ club, onDeposit, onTriggerDraw }) {
       </div>
       <div className="flex flex-wrap gap-3">
         <VeilButton onClick={() => onDeposit(50)}>Quick Deposit 50</VeilButton>
+        <VeilButton onClick={onDecrypt} variant="secondary">
+          {isDecrypted ? `Balance ${walletBalance} cUSDC` : "Decrypt Balance"}
+        </VeilButton>
         <VeilButton onClick={() => navigator.clipboard && navigator.clipboard.writeText(`VC-${(club.id || "").toUpperCase()}`)} variant="secondary">
           Copy Invite
         </VeilButton>
