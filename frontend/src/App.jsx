@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, usePublicClient, useWalletClient, useWriteContract } from "wagmi";
+import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { decodeEventLog, formatUnits, parseUnits, toHex } from "viem";
 import * as THREE from "three";
 import {
@@ -1506,7 +1506,6 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
-  const { writeContractAsync } = useWriteContract();
 
   const [toast, setToast] = useState(null);
   const [poolsState, setPoolsState] = useState(defaultPools);
@@ -1526,8 +1525,15 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
   });
 
   const submitContractTx = async ({ signingTitle, signingMessage, confirmedTitle, confirmedMessage, ...request }) => {
+    if (!walletClient) {
+      throw new Error("Wallet client is not ready. Reconnect your wallet and try again.");
+    }
+
     showToast(signingTitle, signingMessage);
-    const txHash = await writeContractAsync(request);
+    const txHash = await walletClient.writeContract({
+      account: address,
+      ...request
+    });
 
     if (!txHash) {
       throw new Error("Wallet did not return a transaction hash.");
