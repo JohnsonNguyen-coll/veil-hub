@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/common/PageHeader.jsx";
 import { Panel } from "../components/common/Panel.jsx";
 import { DataCell } from "../components/common/Inputs.jsx";
 import { ClubDetail, ClubForm, InviteForm } from "../components/common/FormsAndDetails.jsx";
 
 export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideBalance, onJoinClub, onDeposit, walletBalance }) {
-  const privateClubs = clubs.filter((pool) => pool.scope === "PRIVATE");
+  const privateClubs = useMemo(() => clubs.filter((pool) => pool.scope === "PRIVATE"), [clubs]);
   const [selectedClub, setSelectedClub] = useState(privateClubs[0] || clubs[0]);
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
                   <p className="font-data-sm text-data-sm text-veil-white opacity-50 mt-2">invite: VC-{club.id.toUpperCase()}</p>
                 </div>
                 <DataCell label="members" value={club.members} />
-                <DataCell label="draw" value={club.draw} />
+                <DataCell label="cooldown" value={club.draw || "--"} />
               </button>
             ))}
           </div>
