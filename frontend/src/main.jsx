@@ -28,7 +28,7 @@ if (customRpcUrl && !rpcEndpoints.some((r) => r.url === customRpcUrl)) {
 
 const queryClient = new QueryClient();
 const wagmiConfig = getDefaultConfig({
-  appName: "Veil Clubs",
+  appName: "VeilHubs",
   projectId: walletConnectProjectId,
   chains: [sepolia],
   transports: {
