@@ -1696,12 +1696,17 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
 
     try {
       const units = parseTokenAmount(amount || "100");
-      const poolIsOperator = await publicClient.readContract({
-        address: VEIL_TOKEN_ADDRESS,
-        abi: VeilTokenABI,
-        functionName: "isOperator",
-        args: [address, VEIL_CLUBS_ADDRESS]
-      });
+      let poolIsOperator = false;
+      try {
+        poolIsOperator = await publicClient.readContract({
+          address: VEIL_TOKEN_ADDRESS,
+          abi: VeilTokenABI,
+          functionName: "isOperator",
+          args: [address, VEIL_CLUBS_ADDRESS]
+        });
+      } catch (operatorReadError) {
+        console.warn("Could not read cUSDC operator status; requesting operator authorization before deposit.", operatorReadError);
+      }
 
       if (!poolIsOperator) {
         await submitContractTx({
@@ -1823,6 +1828,11 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
       console.warn("User decrypt failed:", err);
       showToast(isUserRejectedRequest(err) ? "Decrypt Cancelled" : "Decrypt Failed", txErrorMessage(err, "Failed to decrypt your confidential balances."));
     }
+  };
+
+  const handleHideBalance = () => {
+    setIsDecrypted(false);
+    showToast("Balance Hidden", "Plaintext balances are hidden locally. Onchain balances remain encrypted.");
   };
 
   const handleClaim = async () => {
@@ -2006,6 +2016,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
           <GlobalPoolPage
             isDecrypted={isDecrypted}
             onDecrypt={handleDecrypt}
+            onHideBalance={handleHideBalance}
             onDeposit={handleDeposit}
             onTriggerDraw={() => handleTriggerDraw("Global Pool")}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
@@ -2017,6 +2028,7 @@ function AppWorkspace({ activePage, navigatePage, onFaucet }) {
             isDecrypted={isDecrypted}
             onCreateClub={handleCreateClub}
             onDecrypt={handleDecrypt}
+            onHideBalance={handleHideBalance}
             onDeposit={handleDeposit}
             onJoinClub={handleJoinClub}
             onTriggerDraw={handleTriggerDraw}
@@ -2106,7 +2118,7 @@ function DashboardPage({ navigatePage, pools, isDecrypted, isClaimed, userDeposi
   );
 }
 
-function GlobalPoolPage({ isDecrypted, onDecrypt, onDeposit, onTriggerDraw, walletBalance }) {
+function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposit, onTriggerDraw, walletBalance }) {
   return (
     <div>
       <PageHeader
@@ -2130,7 +2142,14 @@ function GlobalPoolPage({ isDecrypted, onDecrypt, onDeposit, onTriggerDraw, wall
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
         <Panel title="Deposit Flow">
-          <TransactionForm isDecrypted={isDecrypted} mode="global" onDecrypt={onDecrypt} onDeposit={onDeposit} walletBalance={walletBalance} />
+          <TransactionForm
+            isDecrypted={isDecrypted}
+            mode="global"
+            onDecrypt={onDecrypt}
+            onHideBalance={onHideBalance}
+            onDeposit={onDeposit}
+            walletBalance={walletBalance}
+          />
         </Panel>
         <Panel title="Draw Engine">
           <DrawEngine />
@@ -2140,7 +2159,7 @@ function GlobalPoolPage({ isDecrypted, onDecrypt, onDeposit, onTriggerDraw, wall
   );
 }
 
-function PrivateClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onJoinClub, onDeposit, onTriggerDraw, walletBalance }) {
+function PrivateClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideBalance, onJoinClub, onDeposit, onTriggerDraw, walletBalance }) {
   const privateClubs = clubs.filter((pool) => pool.scope === "PRIVATE");
   const [selectedClub, setSelectedClub] = useState(privateClubs[0] || clubs[0]);
 
@@ -2179,6 +2198,7 @@ function PrivateClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onJoinC
             club={selectedClub}
             isDecrypted={isDecrypted}
             onDecrypt={onDecrypt}
+            onHideBalance={onHideBalance}
             onDeposit={(amt) => onDeposit(amt, selectedClub?.name || "Private Club", selectedClub?.contractId || 0n)}
             onTriggerDraw={() => onTriggerDraw(selectedClub?.name || "Private Club")}
             walletBalance={walletBalance}
@@ -2362,28 +2382,39 @@ function DataTable({ columns, rows }) {
   );
 }
 
-function TransactionForm({ isDecrypted, mode, onDecrypt, onDeposit, walletBalance }) {
+function TransactionForm({ isDecrypted, mode, onDecrypt, onHideBalance, onDeposit, walletBalance }) {
   const [amount, setAmount] = useState("100.00");
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
+    <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-start">
       <div>
         <LabelInput label="Amount" onChange={(e) => setAmount(e.target.value)} placeholder="100.00" value={amount} />
-        <div className="flex flex-wrap items-center gap-2 mt-2 ml-1">
+        <div className="min-h-[20px] flex flex-wrap items-center gap-2 mt-2 ml-1">
           <p className="font-data-sm text-data-sm text-veil-purple">
             Balance: {isDecrypted && walletBalance != null ? `${walletBalance} cUSDC` : "hidden"}
           </p>
-          {!isDecrypted && (
+          {isDecrypted ? (
+            <button className="font-data-sm text-data-sm text-veil-white underline opacity-70 hover:opacity-100" onClick={onHideBalance} type="button">
+              Hide Balance
+            </button>
+          ) : (
             <button className="font-data-sm text-data-sm text-veil-white underline opacity-70 hover:opacity-100" onClick={onDecrypt} type="button">
               Decrypt Balance
             </button>
           )}
         </div>
       </div>
-      <LabelInput label="Token" placeholder="cUSDC" value="cUSDC (ERC-7984)" />
-      <VeilButton className="h-[50px]" onClick={() => onDeposit && onDeposit(amount, mode === "global" ? "Global Pool" : "Private Club")}>
-        Encrypt Deposit
-      </VeilButton>
+      <div>
+        <LabelInput label="Token" placeholder="cUSDC" value="cUSDC (ERC-7984)" />
+        <div className="min-h-[20px] mt-2" />
+      </div>
+      <div className="flex flex-col">
+        <div className="h-[24px] hidden md:block" />
+        <VeilButton className="h-[50px]" onClick={() => onDeposit && onDeposit(amount, mode === "global" ? "Global Pool" : "Private Club")}>
+          Encrypt Deposit
+        </VeilButton>
+        <div className="min-h-[20px] mt-2" />
+      </div>
       <div className="md:col-span-3 border border-veil-gray-light bg-veil-gray-dark p-4">
         <span className="font-data-sm text-data-sm text-veil-white opacity-70 uppercase">
           &gt; {mode === "global" ? "GLOBAL_POOL" : "PRIVATE_CLUB"} :: amount encrypted client-side, proof submitted onchain
