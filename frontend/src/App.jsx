@@ -29,20 +29,78 @@ const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
 const FAUCET_UNDERLYING_AMOUNT = 100_000_000n;
 const TOKEN_DECIMALS = 6;
 const MAX_EUINT64 = (1n << 64n) - 1n;
-const DEFAULT_SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
+const PUBLIC_SEPOLIA_RPC_URLS = [
+  "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://sepolia.gateway.tenderly.co",
+  "https://1rpc.io/sepolia",
+  "https://gateway.tenderly.co/public/sepolia",
+  "https://rpc2.sepolia.org"
+];
 const OPERATOR_APPROVAL_SECONDS = 24 * 60 * 60;
 let fheSdkInitPromise;
 let fheInstancePromise;
+let fheRpcIndex = 0;
+
+function orderedFheRpcUrls() {
+  const privateRpcUrl = import.meta.env.VITE_SEPOLIA_RPC_URL;
+  const urls = [...PUBLIC_SEPOLIA_RPC_URLS];
+  if (privateRpcUrl && !urls.includes(privateRpcUrl)) urls.push(privateRpcUrl);
+  return urls;
+}
+
+function isRetryableRpcError(error) {
+  const message = `${error?.shortMessage || ""} ${error?.message || ""} ${error?.details || ""}`.toLowerCase();
+  return (
+    message.includes("429") ||
+    message.includes("rate limit") ||
+    message.includes("too many requests") ||
+    message.includes("timeout") ||
+    message.includes("network") ||
+    message.includes("fetch") ||
+    message.includes("failed to fetch")
+  );
+}
 
 async function getFheInstance() {
   const { initSDK, createInstance, SepoliaConfig } = await import("@zama-fhe/relayer-sdk/web");
   fheSdkInitPromise ||= initSDK();
   await fheSdkInitPromise;
-  fheInstancePromise ||= createInstance({
-    ...SepoliaConfig,
-    network: import.meta.env.VITE_SEPOLIA_RPC_URL || DEFAULT_SEPOLIA_RPC
-  });
-  return fheInstancePromise;
+  const rpcUrls = orderedFheRpcUrls();
+
+  if (fheInstancePromise) return fheInstancePromise;
+
+  let lastError;
+  for (let index = fheRpcIndex; index < rpcUrls.length; index += 1) {
+    try {
+      fheInstancePromise = createInstance({
+        ...SepoliaConfig,
+        network: rpcUrls[index]
+      });
+      const instance = await fheInstancePromise;
+      fheRpcIndex = index;
+      return instance;
+    } catch (error) {
+      fheInstancePromise = null;
+      lastError = error;
+      if (!isRetryableRpcError(error)) break;
+    }
+  }
+
+  throw lastError || new Error("Unable to initialize Zama FHE SDK.");
+}
+
+async function withFheInstance(task) {
+  try {
+    return await task(await getFheInstance());
+  } catch (error) {
+    const rpcUrls = orderedFheRpcUrls();
+    if (isRetryableRpcError(error) && fheRpcIndex + 1 < rpcUrls.length) {
+      fheRpcIndex += 1;
+      fheInstancePromise = null;
+      return task(await getFheInstance());
+    }
+    throw error;
+  }
 }
 
 function parseTokenAmount(amount) {
@@ -57,8 +115,9 @@ function operatorApprovalExpiry() {
 }
 
 async function encryptUint64Input(contractAddress, userAddress, amount) {
-  const instance = await getFheInstance();
-  const encrypted = await instance.createEncryptedInput(contractAddress, userAddress).add64(amount).encrypt();
+  const encrypted = await withFheInstance((instance) =>
+    instance.createEncryptedInput(contractAddress, userAddress).add64(amount).encrypt()
+  );
   return {
     handle: toHex(encrypted.handles[0]),
     inputProof: toHex(encrypted.inputProof)
@@ -66,33 +125,34 @@ async function encryptUint64Input(contractAddress, userAddress, amount) {
 }
 
 async function userDecryptUint64({ handle, contractAddress, userAddress, walletClient }) {
-  const instance = await getFheInstance();
-  const keypair = instance.generateKeypair();
-  const startTimestamp = Math.floor(Date.now() / 1000);
-  const durationDays = 1;
-  const contractAddresses = [contractAddress];
-  const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays);
-  const types = {
-    UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification
-  };
-  const signature = await walletClient.signTypedData({
-    account: userAddress,
-    domain: eip712.domain,
-    types,
-    primaryType: "UserDecryptRequestVerification",
-    message: eip712.message
+  return withFheInstance(async (instance) => {
+    const keypair = instance.generateKeypair();
+    const startTimestamp = Math.floor(Date.now() / 1000);
+    const durationDays = 1;
+    const contractAddresses = [contractAddress];
+    const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays);
+    const types = {
+      UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification
+    };
+    const signature = await walletClient.signTypedData({
+      account: userAddress,
+      domain: eip712.domain,
+      types,
+      primaryType: "UserDecryptRequestVerification",
+      message: eip712.message
+    });
+    const result = await instance.userDecrypt(
+      [{ handle, contractAddress }],
+      keypair.privateKey,
+      keypair.publicKey,
+      signature.replace("0x", ""),
+      contractAddresses,
+      userAddress,
+      startTimestamp,
+      durationDays
+    );
+    return BigInt(result[handle] ?? result[handle.toLowerCase()] ?? 0);
   });
-  const result = await instance.userDecrypt(
-    [{ handle, contractAddress }],
-    keypair.privateKey,
-    keypair.publicKey,
-    signature.replace("0x", ""),
-    contractAddresses,
-    userAddress,
-    startTimestamp,
-    durationDays
-  );
-  return BigInt(result[handle] ?? result[handle.toLowerCase()] ?? 0);
 }
 
 const TEST_ERC20_ABI = [
@@ -174,10 +234,59 @@ function encryptedLabel(value) {
   return "encrypted";
 }
 
-function formatDrawTime(timestamp) {
-  const seconds = Number(timestamp || 0);
-  if (!seconds) return "24H 00M";
-  return new Date(seconds * 1000).toLocaleString();
+function getDrawTimestampMs(value) {
+  if (!value) return null;
+  if (typeof value === "bigint") return Number(value) * 1000;
+  if (typeof value === "number") return value > 10_000_000_000 ? value : value * 1000;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric > 10_000_000_000 ? numeric : numeric * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatCountdown(value, nowMs = Date.now()) {
+  const timestampMs = getDrawTimestampMs(value);
+  if (!timestampMs) return "--";
+  const remaining = Math.max(0, Math.floor((timestampMs - nowMs) / 1000));
+  if (remaining <= 0) return "READY";
+  const days = Math.floor(remaining / 86400);
+  const hours = Math.floor((remaining % 86400) / 3600);
+  const minutes = Math.floor((remaining % 3600) / 60);
+  const seconds = remaining % 60;
+  if (days > 0) return `${days}D ${String(hours).padStart(2, "0")}H`;
+  if (hours > 0) return `${String(hours).padStart(2, "0")}H ${String(minutes).padStart(2, "0")}M`;
+  return `${String(minutes).padStart(2, "0")}M ${String(seconds).padStart(2, "0")}S`;
+}
+
+function poolFromClub(club) {
+  return {
+    id: club.id || `club-${club.contractClubId}`,
+    name: club.name || "Global Pool",
+    scope: club.scope || "PRIVATE",
+    contractId: String(club.contractClubId ?? club.contractId ?? (club.id === "global" ? "0" : "")),
+    tvl: encryptedLabel(club.encryptedTvlHandle || club.tvl),
+    members: String(club.memberCount ?? club.members ?? 0),
+    nextDrawAt: club.nextDrawAt || null,
+    draw: "--",
+    prize: club.encryptedPrizeHandle ? "•••••• USDC" : club.prize || "•••••• USDC",
+    status: club.status || "ACTIVE",
+    admin: club.admin,
+    keeper: club.keeper,
+    inviteCode: club.inviteCode,
+    anonymousMembers: club.anonymousMembers
+  };
+}
+
+function withOnchainClubView(pool, clubView) {
+  if (!clubView?.exists) return pool;
+  return {
+    ...pool,
+    admin: clubView.admin || pool.admin,
+    keeper: clubView.keeper || pool.keeper,
+    members: String(clubView.memberCount ?? pool.members ?? 0),
+    nextDrawAt: clubView.nextDrawAt ? Number(clubView.nextDrawAt) * 1000 : pool.nextDrawAt,
+    status: "ACTIVE"
+  };
 }
 
 function sameAddress(left, right) {
@@ -195,6 +304,7 @@ function AppContent({ activePage, navigatePage }) {
   const [userDeposit, setUserDeposit] = useState(null);
   const [isDecrypted, setIsDecrypted] = useState(false);
   const [isClaimed, setIsClaimed] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const showToast = (title, message, txHash = null) => {
     setToast({ title, message, txHash });
@@ -224,6 +334,67 @@ function AppContent({ activePage, navigatePage }) {
     }),
     []
   );
+
+  const refreshPools = async () => {
+    const backendPools = [];
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/clubs`);
+      if (res.ok) {
+        const payload = await res.json();
+        backendPools.push(...(payload.clubs || []));
+      }
+    } catch {
+      // Backend metadata is optional; onchain global state is still readable.
+    }
+
+    const rawPools = backendPools.length ? backendPools : defaultPools;
+    const nextPools = await Promise.all(
+      rawPools.map(async (club) => {
+        const pool = poolFromClub(club);
+        if (!publicClient || !IS_CONTRACT_CONFIGURED || pool.contractId === "") return pool;
+        try {
+          const clubView = await publicClient.readContract({
+            ...clubContract,
+            functionName: "clubView",
+            args: [BigInt(pool.contractId)]
+          });
+          return withOnchainClubView(pool, clubView);
+        } catch {
+          return pool;
+        }
+      })
+    );
+
+    setPoolsState(nextPools);
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    refreshPools();
+    const timer = setInterval(refreshPools, 30000);
+    return () => clearInterval(timer);
+  }, [publicClient, clubContract]);
+
+  const displayPools = useMemo(
+    () =>
+      poolsState.map((pool) => ({
+        ...pool,
+        draw: formatCountdown(pool.nextDrawAt, nowMs)
+      })),
+    [poolsState, nowMs]
+  );
+
+  const activePoolsCount = displayPools.filter((pool) => Number(pool.members || 0) > 0).length;
+  const drawTimestamps = displayPools.map((pool) => getDrawTimestampMs(pool.nextDrawAt)).filter(Boolean);
+  const hasReadyDraw = drawTimestamps.some((timestamp) => timestamp <= nowMs);
+  const nextDrawAt = drawTimestamps
+    .filter((timestamp) => timestamp >= nowMs)
+    .sort((a, b) => a - b)[0];
+  const dashboardNextDraw = hasReadyDraw ? "READY" : formatCountdown(nextDrawAt, nowMs);
 
   const ensureOperatorApproved = async (userAddress) => {
     if (!walletClient || !publicClient || !IS_TOKEN_CONFIGURED) return;
@@ -259,7 +430,7 @@ function AppContent({ activePage, navigatePage }) {
       showToast("Submitting Deposit", `Submitting encrypted deposit to ${poolName}...`);
       const hash = await walletClient.writeContract({
         ...clubContract,
-        functionName: "depositToClub",
+        functionName: "deposit",
         args: [BigInt(clubId), handle, inputProof]
       });
 
@@ -268,6 +439,7 @@ function AppContent({ activePage, navigatePage }) {
 
       if (receipt.status === "success") {
         showToast("Deposit Confirmed", `Successfully deposited ${amountInput} cUSDC into ${poolName}!`, hash);
+        await refreshPools();
         handleDecrypt();
       } else {
         showToast("Deposit Reverted", "Transaction reverted on Sepolia.", hash);
@@ -518,7 +690,8 @@ function AppContent({ activePage, navigatePage }) {
       });
 
       if (res.ok) {
-        const payload = await res.json();
+        await res.json();
+        await refreshPools();
         showToast("Club Created", `Private Club ${clubData.name} deployed at ID #${createdContractClubId}!`, hash);
       } else {
         showToast("Club Onchain OK", `Deployed onchain (#${createdContractClubId}), metadata sync warning.`, hash);
@@ -568,7 +741,9 @@ function AppContent({ activePage, navigatePage }) {
             navigatePage={navigatePage}
             onDecrypt={handleDecrypt}
             onFaucet={handleFaucet}
-            pools={poolsState}
+            activePoolsCount={activePoolsCount}
+            nextDraw={dashboardNextDraw}
+            pools={displayPools}
             userDeposit={getDisplayBalance(userDeposit)}
             walletBalance={getDisplayBalance(walletBalance)}
           />
@@ -579,13 +754,13 @@ function AppContent({ activePage, navigatePage }) {
             onDecrypt={handleDecrypt}
             onDeposit={handleDeposit}
             onHideBalance={handleHideBalance}
-            pool={poolsState.find((pool) => pool.id === "global" || String(pool.contractId) === "0") || defaultPools[0]}
+            pool={displayPools.find((pool) => pool.id === "global" || String(pool.contractId) === "0") || defaultPools[0]}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
           />
         ) : null}
         {activePage === "clubs" ? (
           <ClubsPage
-            clubs={poolsState}
+            clubs={displayPools}
             isDecrypted={isDecrypted}
             onCreateClub={handleCreateClub}
             onDecrypt={handleDecrypt}

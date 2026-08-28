@@ -6,7 +6,8 @@ export const defaultPools = [
     contractId: "0",
     tvl: "encrypted",
     members: "0",
-    draw: "24H 00M",
+    nextDrawAt: null,
+    draw: "--",
     prize: "•••••• USDC",
     status: "ACTIVE"
   }

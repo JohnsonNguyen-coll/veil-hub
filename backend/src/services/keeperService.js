@@ -163,7 +163,7 @@ export async function runKeeper() {
     return;
   }
   if (!clients) {
-    console.warn("[keeper] disabled: set RPC_URL, VEIL_CLUBS_ADDRESS, and KEEPER_PRIVATE_KEY to enable onchain draws.");
+    console.warn("[keeper] disabled: set VEIL_CLUBS_ADDRESS and KEEPER_PRIVATE_KEY to enable onchain draws.");
     return;
   }
 

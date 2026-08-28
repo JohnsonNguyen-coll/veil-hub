@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "../components/common/PageHeader.jsx";
 import { Panel } from "../components/common/Panel.jsx";
 import { DataCell } from "../components/common/Inputs.jsx";
@@ -7,6 +7,13 @@ import { ClubDetail, ClubForm, InviteForm } from "../components/common/FormsAndD
 export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideBalance, onJoinClub, onDeposit, walletBalance }) {
   const privateClubs = clubs.filter((pool) => pool.scope === "PRIVATE");
   const [selectedClub, setSelectedClub] = useState(privateClubs[0] || clubs[0]);
+
+  useEffect(() => {
+    setSelectedClub((current) => {
+      const currentId = current?.id;
+      return clubs.find((club) => club.id === currentId) || privateClubs[0] || clubs[0];
+    });
+  }, [clubs, privateClubs]);
 
   return (
     <div>

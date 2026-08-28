@@ -44,7 +44,11 @@ export const SEPOLIA_CHAIN = {
   id: CHAIN_ID,
   name: "Sepolia",
   nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: RPC_URL ? [RPC_URL] : PUBLIC_RPC_URLS } }
+  rpcUrls: {
+    default: {
+      http: [...PUBLIC_RPC_URLS, ...(RPC_URL && !PUBLIC_RPC_URLS.includes(RPC_URL) ? [RPC_URL] : [])]
+    }
+  }
 };
 
 export const VEIL_CLUBS_KEEPER_ABI = [

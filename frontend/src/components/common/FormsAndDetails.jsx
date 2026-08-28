@@ -64,7 +64,7 @@ export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDepo
       <div className="grid grid-cols-2 gap-0 border border-veil-gray-light">
         <MetricCard label="Encrypted TVL" value={club.tvl || "encrypted"} status="HIDDEN" />
         <MetricCard label="Members" value={club.members || "0"} status="MAY_HIDE" />
-        <MetricCard label="Next Draw" value={club.draw || "24H 00M"} status="ADMIN_OR_KEEPER" />
+        <MetricCard label="Next Draw" value={club.draw || "--"} status={club.draw === "READY" ? "KEEPER_READY" : "ADMIN_OR_KEEPER"} />
         <MetricCard label="Prize" value={club.prize || "•••••• USDC"} status="PRIVATE" />
       </div>
       <div className="flex flex-wrap gap-3">
