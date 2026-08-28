@@ -90,13 +90,19 @@ async function main() {
   syncFrontendAbis(compileOutput);
   const depositTokenAddress = process.env.DEPOSIT_TOKEN_ADDRESS || process.env.VEIL_TOKEN_ADDRESS || ZAMA_SEPOLIA_CUSDC_WRAPPER;
   const keeperAddress = process.env.KEEPER_ADDRESS;
+  const globalDrawInterval = BigInt(process.env.GLOBAL_DRAW_INTERVAL_SECONDS || 86400);
+  if (globalDrawInterval <= 0n) {
+    console.error("❌ Error: GLOBAL_DRAW_INTERVAL_SECONDS phải lớn hơn 0.");
+    process.exit(1);
+  }
 
   console.log("\n🔐 Deposit token:", depositTokenAddress);
   console.log("   Default is Zama official Sepolia cUSDC wrapper.");
+  console.log("⏱️ Global draw interval:", globalDrawInterval.toString(), "seconds");
 
   console.log("\n📦 Đang deploy VeilClubs (Main Pool & Draw Engine)...");
   const ClubsFactory = new ethers.ContractFactory(clubsContract.abi, clubsContract.evm.bytecode.object, wallet);
-  const clubs = await ClubsFactory.deploy(depositTokenAddress, wallet.address);
+  const clubs = await ClubsFactory.deploy(depositTokenAddress, wallet.address, globalDrawInterval);
   console.log("⏳ Chờ transaction được confirm trên Sepolia...");
   await clubs.waitForDeployment();
   const clubsAddress = await clubs.getAddress();

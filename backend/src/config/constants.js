@@ -17,6 +17,8 @@ export const CHAIN_ID = Number(process.env.CHAIN_ID || 11155111);
 export const RPC_URL = process.env.RPC_URL || process.env.SEPOLIA_RPC_URL || "";
 export const VEIL_CLUBS_ADDRESS = process.env.VEIL_CLUBS_ADDRESS || "";
 export const KEEPER_PRIVATE_KEY = process.env.KEEPER_PRIVATE_KEY || "";
+export const ZAMA_FHEVM_API_KEY = process.env.ZAMA_FHEVM_API_KEY || process.env.FHEVM_API_KEY || "";
+export const PUBLIC_DECRYPT_TIMEOUT_MS = Number(process.env.PUBLIC_DECRYPT_TIMEOUT_MS || 120000);
 export const FAUCET_COOLDOWN_MS = Number(process.env.FAUCET_COOLDOWN_MS || 86400000);
 export const SUPABASE_URL = process.env.SUPABASE_URL || "";
 export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -78,15 +80,32 @@ export const VEIL_CLUBS_KEEPER_ABI = [
   },
   {
     type: "function",
-    name: "triggerDraw",
+    name: "prepareWeightedDraw",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "clubId", type: "uint256" }],
+    outputs: [{ name: "totalPrincipalHandle", type: "bytes32" }]
+  },
+  {
+    type: "function",
+    name: "triggerWeightedDraw",
     stateMutability: "nonpayable",
     inputs: [
       { name: "clubId", type: "uint256" },
-      { name: "drawCommitment", type: "bytes32" }
+      { name: "drawCommitment", type: "bytes32" },
+      { name: "totalPrincipal", type: "uint64" },
+      { name: "decryptionProof", type: "bytes" }
     ],
     outputs: [
       { name: "drawId", type: "uint256" },
       { name: "prize", type: "bytes32" }
+    ]
+  },
+  {
+    type: "event",
+    name: "DrawTotalReadyForDecryption",
+    inputs: [
+      { name: "clubId", type: "uint256", indexed: true },
+      { name: "totalPrincipalHandle", type: "bytes32", indexed: false }
     ]
   },
   {

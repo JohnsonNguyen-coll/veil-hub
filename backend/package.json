@@ -9,6 +9,7 @@
     "check": "node --check src/server.js"
   },
   "dependencies": {
+    "@zama-fhe/relayer-sdk": "^0.4.4",
     "@supabase/supabase-js": "^2.112.3",
     "dotenv": "^17.2.3",
     "viem": "^2.41.1"

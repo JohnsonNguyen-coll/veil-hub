@@ -10,6 +10,11 @@
         "internalType": "address",
         "name": "owner",
         "type": "address"
+      },
+      {
+        "internalType": "uint64",
+        "name": "globalDrawInterval",
+        "type": "uint64"
       }
     ],
     "stateMutability": "nonpayable",
@@ -56,6 +61,22 @@
   {
     "inputs": [],
     "name": "InvalidDrawInterval",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidKMSSignatures",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint64",
+        "name": "totalPrincipal",
+        "type": "uint64"
+      }
+    ],
+    "name": "InvalidTotalPrincipal",
     "type": "error"
   },
   {
@@ -157,6 +178,11 @@
   },
   {
     "inputs": [],
+    "name": "WeightedDrawRequiresPublicTotal",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "ZamaProtocolUnsupported",
     "type": "error"
   },
@@ -238,6 +264,25 @@
       }
     ],
     "name": "DrawExecuted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "clubId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "euint64",
+        "name": "totalPrincipalHandle",
+        "type": "bytes32"
+      }
+    ],
+    "name": "DrawTotalReadyForDecryption",
     "type": "event"
   },
   {
@@ -383,6 +428,25 @@
       }
     ],
     "name": "PrizeClaimed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "bytes32[]",
+        "name": "handlesList",
+        "type": "bytes32[]"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes",
+        "name": "abiEncodedCleartexts",
+        "type": "bytes"
+      }
+    ],
+    "name": "PublicDecryptionVerified",
     "type": "event"
   },
   {
@@ -717,6 +781,35 @@
     "inputs": [
       {
         "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "name": "executeDraw",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "euint64",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
         "name": "clubId",
         "type": "uint256"
       },
@@ -724,9 +817,19 @@
         "internalType": "bytes32",
         "name": "drawCommitment",
         "type": "bytes32"
+      },
+      {
+        "internalType": "uint64",
+        "name": "totalPrincipal",
+        "type": "uint64"
+      },
+      {
+        "internalType": "bytes",
+        "name": "decryptionProof",
+        "type": "bytes"
       }
     ],
-    "name": "executeDraw",
+    "name": "executeWeightedDraw",
     "outputs": [
       {
         "internalType": "uint256",
@@ -822,6 +925,25 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "clubId",
+        "type": "uint256"
+      }
+    ],
+    "name": "prepareWeightedDraw",
+    "outputs": [
+      {
+        "internalType": "euint64",
+        "name": "totalPrincipalHandle",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "renounceOwnership",
     "outputs": [],
@@ -863,6 +985,35 @@
     "inputs": [
       {
         "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "name": "triggerDraw",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "euint64",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
         "name": "clubId",
         "type": "uint256"
       },
@@ -870,9 +1021,19 @@
         "internalType": "bytes32",
         "name": "drawCommitment",
         "type": "bytes32"
+      },
+      {
+        "internalType": "uint64",
+        "name": "totalPrincipal",
+        "type": "uint64"
+      },
+      {
+        "internalType": "bytes",
+        "name": "decryptionProof",
+        "type": "bytes"
       }
     ],
-    "name": "triggerDraw",
+    "name": "triggerWeightedDraw",
     "outputs": [
       {
         "internalType": "uint256",

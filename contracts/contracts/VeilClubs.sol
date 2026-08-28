@@ -71,6 +71,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     event EncryptedDeposit(uint256 indexed clubId, euint64 amountHandle);
     event PrincipalWithdrawn(uint256 indexed clubId, euint64 amountHandle);
     event YieldAccrued(uint256 indexed clubId, address indexed source, euint64 amountHandle);
+    event DrawTotalReadyForDecryption(uint256 indexed clubId, euint64 totalPrincipalHandle);
     event DrawTriggered(uint256 indexed clubId, uint256 indexed drawId, euint64 prizeHandle, bytes32 drawCommitment);
     event DrawExecuted(
         uint256 indexed clubId,
@@ -89,8 +90,12 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     error NoMembersInClub(uint256 clubId);
     error InvalidDrawId(uint256 drawId);
     error PrizeAlreadyClaimed(uint256 clubId, uint256 drawId, address member);
+    error WeightedDrawRequiresPublicTotal();
+    error InvalidTotalPrincipal(uint64 totalPrincipal);
 
-    constructor(IERC7984 token, address owner) Ownable(owner) {
+    constructor(IERC7984 token, address owner, uint64 globalDrawInterval) Ownable(owner) {
+        if (globalDrawInterval == 0) revert InvalidDrawInterval();
+
         depositToken = token;
 
         Club storage globalPool = _clubs[GLOBAL_POOL_ID];
@@ -99,8 +104,8 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         globalPool.admin = owner;
         globalPool.keeper = owner;
         globalPool.minDeposit = 1;
-        globalPool.drawInterval = 1 days;
-        globalPool.nextDrawAt = uint64(block.timestamp + 1 days);
+        globalPool.drawInterval = globalDrawInterval;
+        globalPool.nextDrawAt = uint64(block.timestamp + globalDrawInterval);
         globalPool.exists = true;
     }
 
@@ -186,16 +191,34 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         emit YieldAccrued(clubId, msg.sender, received);
     }
 
-    /// @notice Executes an onchain verifiable confidential draw.
-    /// @dev Selects a winner in ciphertext without exposing the selected index. Only the winner
-    /// can decrypt their non-zero prize allocation.
-    function executeDraw(uint256 clubId, bytes32 drawCommitment) public returns (uint256 drawId, euint64 prize) {
+    /// @notice Opens the encrypted aggregate principal for KMS public decryption before a weighted draw.
+    /// @dev This reveals only the pool aggregate used to bound randomness; individual member principals stay encrypted.
+    function prepareWeightedDraw(uint256 clubId) external returns (euint64 totalPrincipalHandle) {
         Club storage club = _requireClub(clubId);
-        if (msg.sender != club.admin && msg.sender != club.keeper && msg.sender != owner()) {
-            revert NotClubAdminOrKeeper(clubId, msg.sender);
-        }
-        if (block.timestamp < club.nextDrawAt) revert DrawTooEarly(clubId, club.nextDrawAt);
-        if (club.members.length == 0) revert NoMembersInClub(clubId);
+        _requireDrawOperator(club, clubId);
+        _requireDrawable(club, clubId);
+
+        totalPrincipalHandle = FHE.makePubliclyDecryptable(club.encryptedTotalPrincipal);
+        emit DrawTotalReadyForDecryption(clubId, totalPrincipalHandle);
+    }
+
+    /// @notice Executes an onchain verifiable weighted confidential draw.
+    /// @dev KMS proof binds `totalPrincipal` to the encrypted aggregate. Winner selection is computed over encrypted
+    /// member principal buckets, so individual balances and the winner allocation remain confidential.
+    function executeWeightedDraw(
+        uint256 clubId,
+        bytes32 drawCommitment,
+        uint64 totalPrincipal,
+        bytes calldata decryptionProof
+    ) public returns (uint256 drawId, euint64 prize) {
+        Club storage club = _requireClub(clubId);
+        _requireDrawOperator(club, clubId);
+        _requireDrawable(club, clubId);
+        if (totalPrincipal == 0) revert InvalidTotalPrincipal(totalPrincipal);
+
+        bytes32[] memory handles = new bytes32[](1);
+        handles[0] = euint64.unwrap(club.encryptedTotalPrincipal);
+        FHE.checkSignatures(handles, abi.encode(totalPrincipal), decryptionProof);
 
         drawId = ++club.drawCount;
         prize = club.encryptedYield;
@@ -203,30 +226,32 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         club.nextDrawAt = uint64(block.timestamp + club.drawInterval);
         _drawTotalPrizes[clubId][drawId] = prize;
 
-        // 1. Generate encrypted random winner index uniformly over member count
         uint256 len = club.members.length;
-        euint64 randIdx = FHE.randEuint64(uint64(len));
-
-        // 2. Homomorphic selection and prize allocation across all members
-        for (uint256 i = 0; i < len; i++) {
-            address member = club.members[i];
-            ebool isWinner = FHE.eq(randIdx, FHE.asEuint64(uint64(i)));
-
-            euint64 allocatedPrize = FHE.select(isWinner, prize, FHE.asEuint64(0));
-            _drawPrizes[clubId][drawId][member] = allocatedPrize;
-
-            // Allow only this member and the contract to operate on/decrypt their prize handle
-            _allowUserAndContract(allocatedPrize, member);
-        }
+        _allocateWeightedPrizes(club, clubId, drawId, prize, totalPrincipal);
 
         _allowContractOnly(prize);
         emit DrawTriggered(clubId, drawId, prize, drawCommitment);
         emit DrawExecuted(clubId, drawId, prize, drawCommitment, len);
     }
 
-    /// @notice Compatibility wrapper for triggering a draw.
-    function triggerDraw(uint256 clubId, bytes32 drawCommitment) external returns (uint256 drawId, euint64 prize) {
-        return executeDraw(clubId, drawCommitment);
+    /// @notice Legacy equal-member draw entrypoint is disabled. Use weighted draw with KMS total proof.
+    function executeDraw(uint256, bytes32) public pure returns (uint256, euint64) {
+        revert WeightedDrawRequiresPublicTotal();
+    }
+
+    /// @notice Legacy equal-member draw entrypoint is disabled. Use weighted draw with KMS total proof.
+    function triggerDraw(uint256, bytes32) external pure returns (uint256, euint64) {
+        revert WeightedDrawRequiresPublicTotal();
+    }
+
+    /// @notice Compatibility wrapper for keeper services that use trigger naming.
+    function triggerWeightedDraw(
+        uint256 clubId,
+        bytes32 drawCommitment,
+        uint64 totalPrincipal,
+        bytes calldata decryptionProof
+    ) external returns (uint256 drawId, euint64 prize) {
+        return executeWeightedDraw(clubId, drawCommitment, totalPrincipal, decryptionProof);
     }
 
     /// @notice Allows a member to claim their encrypted prize from a completed draw.
@@ -312,6 +337,40 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
                 club.members.pop();
                 return;
             }
+        }
+    }
+
+    function _requireDrawOperator(Club storage club, uint256 clubId) private view {
+        if (msg.sender != club.admin && msg.sender != club.keeper && msg.sender != owner()) {
+            revert NotClubAdminOrKeeper(clubId, msg.sender);
+        }
+    }
+
+    function _requireDrawable(Club storage club, uint256 clubId) private view {
+        if (block.timestamp < club.nextDrawAt) revert DrawTooEarly(clubId, club.nextDrawAt);
+        if (club.members.length == 0) revert NoMembersInClub(clubId);
+    }
+
+    function _allocateWeightedPrizes(
+        Club storage club,
+        uint256 clubId,
+        uint256 drawId,
+        euint64 prize,
+        uint64 totalPrincipal
+    ) private {
+        euint64 threshold = FHE.rem(FHE.randEuint64(), totalPrincipal);
+        euint64 cumulative = FHE.asEuint64(0);
+        ebool winnerSelected = FHE.asEbool(false);
+
+        for (uint256 i = 0; i < club.members.length; i++) {
+            address member = club.members[i];
+            cumulative = FHE.add(cumulative, club.principal[member]);
+            ebool inBucket = FHE.and(FHE.not(winnerSelected), FHE.lt(threshold, cumulative));
+            winnerSelected = FHE.or(winnerSelected, inBucket);
+
+            euint64 allocatedPrize = FHE.select(inBucket, prize, FHE.asEuint64(0));
+            _drawPrizes[clubId][drawId][member] = allocatedPrize;
+            _allowUserAndContract(allocatedPrize, member);
         }
     }
 

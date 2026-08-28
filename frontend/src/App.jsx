@@ -665,9 +665,9 @@ function AppContent({ activePage, navigatePage }) {
         functionName: "createClub",
         args: [
           clubData.name,
+          clubData.description || "Private confidential no-loss club",
           minDepositUnits,
           drawIntervalSec,
-          keeperAddr,
           Boolean(clubData.directoryVisibility.anonymousMembers)
         ]
       });
@@ -694,6 +694,19 @@ function AppContent({ activePage, navigatePage }) {
 
       if (!createdContractClubId) {
         throw new Error("Could not parse clubId from ClubCreated event.");
+      }
+
+      if (IS_KEEPER_CONFIGURED && !sameAddress(keeperAddr, address)) {
+        showToast("Setting Keeper", "Assigning the automated draw keeper for this club...");
+        const keeperHash = await walletClient.writeContract({
+          ...clubContract,
+          functionName: "setKeeper",
+          args: [BigInt(createdContractClubId), keeperAddr]
+        });
+        const keeperReceipt = await publicClient.waitForTransactionReceipt({ hash: keeperHash });
+        if (keeperReceipt.status !== "success") {
+          throw new Error("Club deployed, but keeper assignment reverted.");
+        }
       }
 
       const res = await fetch(`${BACKEND_URL}/api/clubs`, {

@@ -1,22 +1,104 @@
 import { createPublicClient, createWalletClient, decodeEventLog, fallback, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { createInstance, SepoliaConfig } from "@zama-fhe/relayer-sdk/node";
 import {
   KEEPER_ENABLED,
   KEEPER_INTERVAL_MS,
   KEEPER_PRIVATE_KEY,
+  PUBLIC_DECRYPT_TIMEOUT_MS,
   PUBLIC_RPC_URLS,
   RPC_URL,
   SEPOLIA_CHAIN,
   VEIL_CLUBS_ADDRESS,
   VEIL_CLUBS_KEEPER_ABI,
+  ZAMA_FHEVM_API_KEY,
   ZERO_BYTES32
 } from "../config/constants.js";
 import { readStore, updateStore } from "./storeService.js";
 
 let keeperRunning = false;
+let fheInstancePromise = null;
+let fheRpcIndex = 0;
 
 function sameAddress(left, right) {
   return String(left || "").toLowerCase() === String(right || "").toLowerCase();
+}
+
+function orderedRpcUrls() {
+  return [...PUBLIC_RPC_URLS, ...(RPC_URL && !PUBLIC_RPC_URLS.includes(RPC_URL) ? [RPC_URL] : [])];
+}
+
+function isRetryableRpcError(error) {
+  const message = `${error?.shortMessage || ""} ${error?.message || ""} ${error?.details || ""}`.toLowerCase();
+  return (
+    message.includes("429") ||
+    message.includes("rate limit") ||
+    message.includes("too many requests") ||
+    message.includes("timeout") ||
+    message.includes("network") ||
+    message.includes("fetch") ||
+    message.includes("failed to fetch")
+  );
+}
+
+async function getFheInstance() {
+  if (fheInstancePromise) return fheInstancePromise;
+
+  const rpcUrls = orderedRpcUrls();
+  let lastError;
+  for (let index = fheRpcIndex; index < rpcUrls.length; index += 1) {
+    try {
+      fheInstancePromise = createInstance({
+        ...SepoliaConfig,
+        network: rpcUrls[index],
+        ...(ZAMA_FHEVM_API_KEY ? { auth: { __type: "ApiKeyHeader", value: ZAMA_FHEVM_API_KEY } } : {})
+      });
+      const instance = await fheInstancePromise;
+      fheRpcIndex = index;
+      return instance;
+    } catch (error) {
+      fheInstancePromise = null;
+      lastError = error;
+      if (!isRetryableRpcError(error)) break;
+    }
+  }
+
+  throw lastError || new Error("Unable to initialize Zama FHE SDK.");
+}
+
+async function publicDecryptTotalPrincipal(totalPrincipalHandle) {
+  try {
+    const instance = await getFheInstance();
+    const result = await instance.publicDecrypt([totalPrincipalHandle], {
+      timeout: PUBLIC_DECRYPT_TIMEOUT_MS,
+      ...(ZAMA_FHEVM_API_KEY ? { auth: { __type: "ApiKeyHeader", value: ZAMA_FHEVM_API_KEY } } : {})
+    });
+    const clearValue = result.clearValues[totalPrincipalHandle] || result.clearValues[totalPrincipalHandle.toLowerCase()];
+    return {
+      totalPrincipal: BigInt(clearValue || 0),
+      decryptionProof: result.decryptionProof
+    };
+  } catch (error) {
+    const rpcUrls = orderedRpcUrls();
+    if (isRetryableRpcError(error) && fheRpcIndex + 1 < rpcUrls.length) {
+      fheRpcIndex += 1;
+      fheInstancePromise = null;
+      return publicDecryptTotalPrincipal(totalPrincipalHandle);
+    }
+    throw error;
+  }
+}
+
+function findDecodedEvent(receipt, eventName) {
+  for (const log of receipt.logs || []) {
+    try {
+      const decoded = decodeEventLog({ abi: VEIL_CLUBS_KEEPER_ABI, data: log.data, topics: log.topics });
+      if (decoded.eventName === eventName) return decoded;
+    } catch {
+      // Ignore logs from other contracts touched by transaction.
+    }
+  }
+  return null;
 }
 
 export function getKeeperClients() {
@@ -25,10 +107,7 @@ export function getKeeperClients() {
   }
 
   const account = privateKeyToAccount(KEEPER_PRIVATE_KEY);
-  const rpcTransports = PUBLIC_RPC_URLS.map((url) => http(url));
-  if (RPC_URL && !PUBLIC_RPC_URLS.includes(RPC_URL)) {
-    rpcTransports.push(http(RPC_URL));
-  }
+  const rpcTransports = orderedRpcUrls().map((url) => http(url));
   const transport = fallback(rpcTransports, { rank: false });
 
   return {
@@ -47,18 +126,7 @@ export function trackedContractClubIds(store) {
 }
 
 export async function syncKeeperDraw({ clubId, clubName, txHash, receipt, publicClient }) {
-  let drawLog = null;
-  for (const log of receipt.logs || []) {
-    try {
-      const decoded = decodeEventLog({ abi: VEIL_CLUBS_KEEPER_ABI, data: log.data, topics: log.topics });
-      if (decoded.eventName === "DrawExecuted") {
-        drawLog = decoded;
-        break;
-      }
-    } catch {
-      // Ignore logs from other contracts touched by transaction.
-    }
-  }
+  const drawLog = findDecodedEvent(receipt, "DrawExecuted");
 
   const drawId = drawLog?.args?.drawId?.toString();
   const prizeHandle = drawLog?.args?.prizeHandle || "encrypted";
@@ -124,26 +192,61 @@ export async function runKeeperTick(clients) {
         account: clients.account,
         address: VEIL_CLUBS_ADDRESS,
         abi: VEIL_CLUBS_KEEPER_ABI,
-        functionName: "triggerDraw",
-        args: [BigInt(clubId), ZERO_BYTES32]
+        functionName: "prepareWeightedDraw",
+        args: [BigInt(clubId)]
+      });
+
+      const prepareHash = await clients.walletClient.writeContract({
+        address: VEIL_CLUBS_ADDRESS,
+        abi: VEIL_CLUBS_KEEPER_ABI,
+        functionName: "prepareWeightedDraw",
+        args: [BigInt(clubId)]
+      });
+      console.log(`[keeper] prepareWeightedDraw(${clubId}) submitted: ${prepareHash}`);
+
+      const prepareReceipt = await clients.publicClient.waitForTransactionReceipt({ hash: prepareHash });
+      if (prepareReceipt.status !== "success") {
+        console.warn(`[keeper] prepareWeightedDraw(${clubId}) reverted: ${prepareHash}`);
+        continue;
+      }
+
+      const totalLog = findDecodedEvent(prepareReceipt, "DrawTotalReadyForDecryption");
+      const totalPrincipalHandle = totalLog?.args?.totalPrincipalHandle;
+      if (!totalPrincipalHandle) {
+        console.warn(`[keeper] prepareWeightedDraw(${clubId}) confirmed but total handle was not emitted: ${prepareHash}`);
+        continue;
+      }
+
+      const { totalPrincipal, decryptionProof } = await publicDecryptTotalPrincipal(totalPrincipalHandle);
+      if (totalPrincipal === 0n) {
+        console.warn(`[keeper] weighted draw skipped for ${clubId}: decrypted total principal is zero`);
+        continue;
+      }
+
+      await clients.publicClient.simulateContract({
+        account: clients.account,
+        address: VEIL_CLUBS_ADDRESS,
+        abi: VEIL_CLUBS_KEEPER_ABI,
+        functionName: "triggerWeightedDraw",
+        args: [BigInt(clubId), ZERO_BYTES32, totalPrincipal, decryptionProof]
       });
 
       const txHash = await clients.walletClient.writeContract({
         address: VEIL_CLUBS_ADDRESS,
         abi: VEIL_CLUBS_KEEPER_ABI,
-        functionName: "triggerDraw",
-        args: [BigInt(clubId), ZERO_BYTES32]
+        functionName: "triggerWeightedDraw",
+        args: [BigInt(clubId), ZERO_BYTES32, totalPrincipal, decryptionProof]
       });
-      console.log(`[keeper] triggerDraw(${clubId}) submitted: ${txHash}`);
+      console.log(`[keeper] triggerWeightedDraw(${clubId}) submitted: ${txHash}`);
 
       const receipt = await clients.publicClient.waitForTransactionReceipt({ hash: txHash });
       if (receipt.status !== "success") {
-        console.warn(`[keeper] triggerDraw(${clubId}) reverted: ${txHash}`);
+        console.warn(`[keeper] triggerWeightedDraw(${clubId}) reverted: ${txHash}`);
         continue;
       }
 
       await syncKeeperDraw({ clubId, clubName, txHash, receipt, publicClient: clients.publicClient });
-      console.log(`[keeper] triggerDraw(${clubId}) confirmed: ${txHash}`);
+      console.log(`[keeper] triggerWeightedDraw(${clubId}) confirmed: ${txHash}`);
     }
   } catch (error) {
     console.warn(`[keeper] tick failed: ${error.shortMessage || error.message}`);

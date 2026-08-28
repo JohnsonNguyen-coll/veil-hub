@@ -77,10 +77,10 @@ export function PrivacyList() {
 
 export function DrawEngine() {
   const steps = [
-    ["01", "Read encrypted balances", "euint64 weights stay confidential onchain"],
-    ["02", "Generate FHE randomness", "FHE.randEuint64 bounded entropy on Sepolia"],
-    ["03", "Homomorphic selection", "FHE.select multiplexer selects winner in ciphertext"],
-    ["04", "Grant ACL decryption", "FHE.allow grants decryption ONLY to winner"]
+    ["01", "Prepare aggregate total", "Keeper opens only the encrypted TVL handle for KMS proof"],
+    ["02", "Verify total proof", "Contract verifies Zama KMS signatures before drawing"],
+    ["03", "Weighted ciphertext draw", "Random threshold is compared with encrypted principal buckets"],
+    ["04", "Winner decrypts prize", "Only the winning encrypted prize handle is user-decryptable"]
   ];
 
   return (
