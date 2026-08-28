@@ -368,6 +368,22 @@ function AppContent({ activePage, navigatePage }) {
     setPoolsState(nextPools);
   };
 
+  const getDecryptedTokenBalance = async () => {
+    const tokenBalanceHandle = await publicClient.readContract({
+      ...tokenContract,
+      functionName: "confidentialBalanceOf",
+      args: [address]
+    });
+
+    if (!tokenBalanceHandle || tokenBalanceHandle === ZERO_BYTES32) return 0n;
+    return userDecryptUint64({
+      handle: tokenBalanceHandle,
+      contractAddress: VEIL_TOKEN_ADDRESS,
+      userAddress: address,
+      walletClient
+    });
+  };
+
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -423,6 +439,21 @@ function AppContent({ activePage, navigatePage }) {
 
     try {
       const parsedAmount = parseTokenAmount(amountInput);
+      let availableBalance = isDecrypted && walletBalance != null ? walletBalance : null;
+      if (availableBalance == null) {
+        showToast("Checking Balance", "Decrypting your cUSDC balance before deposit validation...");
+        availableBalance = await getDecryptedTokenBalance();
+        setWalletBalance(availableBalance);
+      }
+
+      if (availableBalance < parsedAmount) {
+        showToast(
+          "Insufficient Balance",
+          `Wallet has ${formatUnits(availableBalance, TOKEN_DECIMALS)} cUSDC, but this deposit needs ${formatUnits(parsedAmount, TOKEN_DECIMALS)} cUSDC.`
+        );
+        return;
+      }
+
       await ensureOperatorApproved(address);
       showToast("Encrypting Input", `Generating FHE proof for ${amountInput} cUSDC...`);
       const { handle, inputProof } = await encryptUint64Input(VEIL_CLUBS_ADDRESS, address, parsedAmount);
@@ -446,7 +477,7 @@ function AppContent({ activePage, navigatePage }) {
       }
     } catch (err) {
       if (isUserRejectedRequest(err)) {
-        showToast("Deposit Cancelled", "User rejected the transaction in wallet.");
+        showToast("Deposit Cancelled", "User rejected the wallet request.");
       } else {
         showToast("Deposit Error", err.shortMessage || err.message || "Encrypted deposit failed.");
       }
@@ -463,37 +494,18 @@ function AppContent({ activePage, navigatePage }) {
       showToast("Decrypting Balance", "Requesting EIP-712 signature to decrypt positions...");
       const globalBalanceHandle = await publicClient.readContract({
         ...clubContract,
-        functionName: "principal",
+        functionName: "encryptedPrincipalOf",
         args: [0n, address]
       });
 
-      const tokenBalanceHandle = await publicClient.readContract({
-        ...tokenContract,
-        functionName: "confidentialBalanceOf",
-        args: [address]
-      });
-
       let decryptedDeposit = 0n;
-      let decryptedToken = 0n;
+      let decryptedToken = await getDecryptedTokenBalance();
 
       if (globalBalanceHandle && globalBalanceHandle !== ZERO_BYTES32) {
         try {
           decryptedDeposit = await userDecryptUint64({
             handle: globalBalanceHandle,
             contractAddress: VEIL_CLUBS_ADDRESS,
-            userAddress: address,
-            walletClient
-          });
-        } catch {
-          // ignore handle decrypt failure if uninitialized
-        }
-      }
-
-      if (tokenBalanceHandle && tokenBalanceHandle !== ZERO_BYTES32) {
-        try {
-          decryptedToken = await userDecryptUint64({
-            handle: tokenBalanceHandle,
-            contractAddress: VEIL_TOKEN_ADDRESS,
             userAddress: address,
             walletClient
           });
