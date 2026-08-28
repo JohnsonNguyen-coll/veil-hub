@@ -1,4 +1,13 @@
+import { useEffect } from "react";
+
 export function ToastNotification({ toast, onClose }) {
+  useEffect(() => {
+    if (!toast) return undefined;
+    const duration = toast.txHash ? 12000 : 6000;
+    const timer = setTimeout(onClose, duration);
+    return () => clearTimeout(timer);
+  }, [toast, onClose]);
+
   if (!toast) return null;
   return (
     <div className="fixed bottom-6 right-6 z-50 max-w-md bg-veil-black border border-veil-purple p-4 shadow-2xl animate-fade-in flex items-start gap-4">

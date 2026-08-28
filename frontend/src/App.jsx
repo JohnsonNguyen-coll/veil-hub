@@ -441,9 +441,13 @@ function AppContent({ activePage, navigatePage }) {
       const parsedAmount = parseTokenAmount(amountInput);
       let availableBalance = isDecrypted && walletBalance != null ? walletBalance : null;
       if (availableBalance == null) {
-        showToast("Checking Balance", "Decrypting your cUSDC balance before deposit validation...");
+        showToast(
+          "Balance Check Required",
+          "Sign EIP-712 to decrypt your cUSDC balance locally before deposit validation."
+        );
         availableBalance = await getDecryptedTokenBalance();
         setWalletBalance(availableBalance);
+        setIsDecrypted(true);
       }
 
       if (availableBalance < parsedAmount) {
@@ -469,9 +473,13 @@ function AppContent({ activePage, navigatePage }) {
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
       if (receipt.status === "success") {
-        showToast("Deposit Confirmed", `Successfully deposited ${amountInput} cUSDC into ${poolName}!`, hash);
         await refreshPools();
-        handleDecrypt();
+        if (isDecrypted || availableBalance != null) {
+          setWalletBalance(availableBalance - parsedAmount);
+          setUserDeposit((current) => (current == null ? parsedAmount : current + parsedAmount));
+          setIsDecrypted(true);
+        }
+        showToast("Deposit Confirmed", `Encrypted deposit of ${amountInput} cUSDC confirmed in ${poolName}.`, hash);
       } else {
         showToast("Deposit Reverted", "Transaction reverted on Sepolia.", hash);
       }
@@ -517,7 +525,7 @@ function AppContent({ activePage, navigatePage }) {
       setUserDeposit(decryptedDeposit);
       setWalletBalance(decryptedToken);
       setIsDecrypted(true);
-      showToast("Decryption Complete", "Your wallet balance and principal positions are unlocked.");
+      showToast("Local Decrypt Complete", "Your cUSDC balance and principal were decrypted locally for this wallet.");
     } catch (err) {
       if (isUserRejectedRequest(err)) {
         showToast("Decryption Cancelled", "User rejected EIP-712 decryption signature.");
@@ -549,7 +557,8 @@ function AppContent({ activePage, navigatePage }) {
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status === "success") {
         showToast("Withdrawal Confirmed", "Principal returned to your confidential token balance.", hash);
-        handleDecrypt();
+        setUserDeposit(0n);
+        setIsDecrypted(false);
       } else {
         showToast("Withdrawal Reverted", "Transaction reverted on Sepolia.", hash);
       }
@@ -580,7 +589,6 @@ function AppContent({ activePage, navigatePage }) {
       if (receipt.status === "success") {
         setIsClaimed(true);
         showToast("Prize Claimed", "Encrypted prize handle claimed into your confidential token balance.", hash);
-        handleDecrypt();
       } else {
         showToast("Claim Reverted", "No claimable prize found or transaction reverted.", hash);
       }
@@ -628,7 +636,9 @@ function AppContent({ activePage, navigatePage }) {
       await publicClient.waitForTransactionReceipt({ hash: wrapTx });
 
       showToast("Faucet Complete", "Received 100 cUSDC! Ready to test encrypted deposits.", wrapTx);
-      handleDecrypt();
+      if (isDecrypted && walletBalance != null) {
+        setWalletBalance(walletBalance + FAUCET_UNDERLYING_AMOUNT);
+      }
     } catch (err) {
       if (isUserRejectedRequest(err)) {
         showToast("Faucet Cancelled", "User rejected faucet transaction.");

@@ -137,11 +137,12 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
 
     function deposit(uint256 clubId, externalEuint64 encryptedAmount, bytes calldata inputProof) external {
         Club storage club = _requireClub(clubId);
-        _joinIfNeeded(club, clubId, msg.sender);
 
         euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
         FHE.allowTransient(amount, address(depositToken));
         euint64 received = depositToken.confidentialTransferFrom(msg.sender, address(this), amount);
+
+        _joinIfNeeded(club, clubId, msg.sender);
 
         club.principal[msg.sender] = FHE.add(club.principal[msg.sender], received);
         club.encryptedTotalPrincipal = FHE.add(club.encryptedTotalPrincipal, received);
@@ -162,6 +163,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         FHE.allowTransient(amount, address(depositToken));
         depositToken.confidentialTransfer(msg.sender, amount);
 
+        _removeMemberIfNeeded(club, msg.sender);
         _allowUserAndContract(club.principal[msg.sender], msg.sender);
         _allowContractOnly(club.encryptedTotalPrincipal);
 
@@ -297,6 +299,20 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         club.isMember[member] = true;
         club.members.push(member);
         emit MemberJoined(clubId);
+    }
+
+    function _removeMemberIfNeeded(Club storage club, address member) private {
+        if (!club.isMember[member]) return;
+        club.isMember[member] = false;
+
+        uint256 len = club.members.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (club.members[i] == member) {
+                club.members[i] = club.members[len - 1];
+                club.members.pop();
+                return;
+            }
+        }
     }
 
     function _requireClub(uint256 clubId) private view returns (Club storage club) {
