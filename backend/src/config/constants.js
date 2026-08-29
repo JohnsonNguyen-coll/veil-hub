@@ -16,7 +16,14 @@ export const KEEPER_INTERVAL_MS = Number(process.env.KEEPER_INTERVAL_MS || 30000
 export const CHAIN_ID = Number(process.env.CHAIN_ID || 11155111);
 export const RPC_URL = process.env.RPC_URL || process.env.SEPOLIA_RPC_URL || "";
 export const VEIL_CLUBS_ADDRESS = process.env.VEIL_CLUBS_ADDRESS || "";
+export const VEIL_TOKEN_ADDRESS = process.env.VEIL_TOKEN_ADDRESS || process.env.VITE_VEIL_TOKEN_ADDRESS || "";
+export const VEIL_UNDERLYING_TOKEN_ADDRESS =
+  process.env.VEIL_UNDERLYING_TOKEN_ADDRESS || process.env.VITE_VEIL_UNDERLYING_TOKEN_ADDRESS || "";
 export const KEEPER_PRIVATE_KEY = process.env.KEEPER_PRIVATE_KEY || "";
+export const KEEPER_AUTO_FUND_YIELD = (process.env.KEEPER_AUTO_FUND_YIELD || "false") === "true";
+export const KEEPER_YIELD_AMOUNT = process.env.KEEPER_YIELD_AMOUNT || "10";
+export const KEEPER_YIELD_MIN_MEMBERS = Number(process.env.KEEPER_YIELD_MIN_MEMBERS || 1);
+export const KEEPER_OPERATOR_APPROVAL_SECONDS = Number(process.env.KEEPER_OPERATOR_APPROVAL_SECONDS || 604800);
 export const ZAMA_FHEVM_API_KEY = process.env.ZAMA_FHEVM_API_KEY || process.env.FHEVM_API_KEY || "";
 export const PUBLIC_DECRYPT_TIMEOUT_MS = Number(process.env.PUBLIC_DECRYPT_TIMEOUT_MS || 120000);
 export const FAUCET_COOLDOWN_MS = Number(process.env.FAUCET_COOLDOWN_MS || 86400000);
@@ -34,6 +41,8 @@ export const supabase =
     : null;
 
 export const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
+export const TOKEN_DECIMALS = 6;
+export const MAX_EUINT64 = (1n << 64n) - 1n;
 export const PUBLIC_RPC_URLS = [
   "https://ethereum-sepolia-rpc.publicnode.com",
   "https://sepolia.gateway.tenderly.co",
@@ -80,6 +89,17 @@ export const VEIL_CLUBS_KEEPER_ABI = [
   },
   {
     type: "function",
+    name: "accrueYield",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "clubId", type: "uint256" },
+      { name: "encryptedAmount", type: "bytes32" },
+      { name: "inputProof", type: "bytes" }
+    ],
+    outputs: []
+  },
+  {
+    type: "function",
     name: "prepareWeightedDraw",
     stateMutability: "nonpayable",
     inputs: [{ name: "clubId", type: "uint256" }],
@@ -118,5 +138,35 @@ export const VEIL_CLUBS_KEEPER_ABI = [
       { name: "drawCommitment", type: "bytes32", indexed: false },
       { name: "memberCount", type: "uint256", indexed: false }
     ]
+  }
+];
+
+export const VEIL_TOKEN_KEEPER_ABI = [
+  {
+    type: "function",
+    name: "confidentialBalanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "balance", type: "bytes32" }]
+  },
+  {
+    type: "function",
+    name: "isOperator",
+    stateMutability: "view",
+    inputs: [
+      { name: "holder", type: "address" },
+      { name: "spender", type: "address" }
+    ],
+    outputs: [{ name: "allowed", type: "bool" }]
+  },
+  {
+    type: "function",
+    name: "setOperator",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "operator", type: "address" },
+      { name: "until", type: "uint48" }
+    ],
+    outputs: []
   }
 ];

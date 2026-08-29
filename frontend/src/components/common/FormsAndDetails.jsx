@@ -46,7 +46,7 @@ export function TransactionForm({ isDecrypted, mode, onDecrypt, onHideBalance, o
   );
 }
 
-export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, walletBalance }) {
+export function ClubDetail({ club, isDecrypted, onDecrypt, onFundYield, onHideBalance, onDeposit, walletBalance }) {
   if (!club) {
     return (
       <div className="p-6 border border-veil-gray-light bg-veil-gray-dark text-veil-white opacity-70 font-data-sm">
@@ -69,6 +69,9 @@ export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDepo
       </div>
       <div className="flex flex-wrap gap-3">
         <VeilButton onClick={() => onDeposit(50)}>Quick Deposit 50</VeilButton>
+        <VeilButton onClick={() => onFundYield("10")} variant="secondary">
+          Fund Prize 10
+        </VeilButton>
         <VeilButton onClick={isDecrypted ? onHideBalance : onDecrypt} variant="secondary">
           {isDecrypted ? `Hide Balance ${walletBalance} cUSDC` : "Decrypt Balance"}
         </VeilButton>

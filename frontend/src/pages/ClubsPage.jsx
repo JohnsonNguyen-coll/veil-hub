@@ -4,7 +4,7 @@ import { Panel } from "../components/common/Panel.jsx";
 import { DataCell } from "../components/common/Inputs.jsx";
 import { ClubDetail, ClubForm, InviteForm } from "../components/common/FormsAndDetails.jsx";
 
-export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideBalance, onJoinClub, onDeposit, walletBalance }) {
+export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onFundYield, onHideBalance, onJoinClub, onDeposit, walletBalance }) {
   const privateClubs = useMemo(() => clubs.filter((pool) => pool.scope === "PRIVATE"), [clubs]);
   const [selectedClub, setSelectedClub] = useState(privateClubs[0] || clubs[0]);
 
@@ -49,6 +49,7 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
             club={selectedClub}
             isDecrypted={isDecrypted}
             onDecrypt={onDecrypt}
+            onFundYield={(amt) => onFundYield(amt, selectedClub?.name || "Private Club", selectedClub?.contractId || 0n)}
             onHideBalance={onHideBalance}
             onDeposit={(amt) => onDeposit(amt, selectedClub?.name || "Private Club", selectedClub?.contractId || 0n)}
             walletBalance={walletBalance}

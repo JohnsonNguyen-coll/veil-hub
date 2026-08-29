@@ -3,7 +3,19 @@ import { VeilButton, ConnectWalletButton } from "../components/common/VeilButton
 import { MetricCard, Panel } from "../components/common/Panel.jsx";
 import { ActionStack } from "../components/common/Inputs.jsx";
 
-export function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, onClaim, onFaucet, onHideBalance, onWithdraw, walletBalance }) {
+export function AccountPage({
+  isDecrypted,
+  isClaimed,
+  pendingPrize,
+  pendingPrizeDraw,
+  userDeposit,
+  onDecrypt,
+  onClaim,
+  onFaucet,
+  onHideBalance,
+  onWithdraw,
+  walletBalance
+}) {
   return (
     <div>
       <PageHeader
@@ -32,8 +44,8 @@ export function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, on
             />
             <MetricCard
               label="Pending Prize"
-              value={isDecrypted ? (isClaimed ? "0.00 USDC" : "0.00 USDC") : "••••••"}
-              status={isClaimed ? "CLAIMED" : "NO_PENDING_PRIZE"}
+              value={isDecrypted ? `${pendingPrize} USDC` : "••••••"}
+              status={pendingPrizeDraw ? `DRAW_${pendingPrizeDraw.drawNumber}` : isClaimed ? "CLAIMED" : "NO_PENDING_PRIZE"}
             />
             <MetricCard
               label="Odds"
@@ -53,8 +65,8 @@ export function AccountPage({ isDecrypted, isClaimed, userDeposit, onDecrypt, on
                 Hide Balance
               </VeilButton>
             ) : null}
-            <VeilButton disabled={isClaimed} onClick={onClaim} variant="secondary">
-              {isClaimed ? "Prize Claimed" : "Claim Prize"}
+            <VeilButton disabled={!pendingPrizeDraw || isClaimed} onClick={onClaim} variant="secondary">
+              {isClaimed ? "Prize Claimed" : pendingPrizeDraw ? `Claim Draw #${pendingPrizeDraw.drawNumber}` : "No Prize To Claim"}
             </VeilButton>
             <VeilButton disabled={userDeposit <= 0} onClick={onWithdraw} variant="secondary">
               Withdraw Principal

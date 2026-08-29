@@ -1,114 +1,147 @@
-# 🛡️ Veil Clubs (VeilFi)
-> **Confidential No-Loss Prize Pools on Ethereum with Zama FHE & ERC-7984**  
-> *Built for Zama Developer Program Mainnet Season 4 Bounty Challenge*
+# VeilHubs
 
----
+Confidential no-loss prize savings on Sepolia, built for the Zama Developer Program Mainnet Season 4 bounty.
 
-## 🌟 Overview
+VeilHubs recreates the core PoolTogether mechanic with ERC-7984 confidential cUSDC: users deposit into a shared prize pool, keep principal withdrawable at any time, and participate in periodic prize draws where selection is weighted by encrypted deposit balances.
 
-**Veil Clubs** is a confidential, production-ready version of **PoolTogether** powered by the **Zama Protocol (FHEVM)** and **ERC-7984 confidential tokens**.
+## Live Demo
 
-Users deposit confidential assets (`cUSDC`) into a shared **Global Pool** or invitation-only **Private Clubs**. The principal capital always remains withdrawable with zero loss, while the generated yield accumulates into periodic prize draws.
+- App URL: add the deployed frontend URL here
+- Network: Ethereum Sepolia
+- Token: Zama Sepolia cUSDC wrapper, `0x7c5BF43B851c1dff1a4feE8dB225b87f2C223639`
 
-### 🔒 Confidentiality & Fairness Guarantees
-- **Encrypted Balances & Deposits**: All deposit amounts, user balances, and accumulated yield pools are represented as `euint64` FHE ciphertexts.
-- **Onchain Verifiable FHE Draw Kernel**: Winner selection executes homomorphically over encrypted state (`FHE.randEuint64`, `FHE.eq`, `FHE.select`) without revealing anyone's financial position, odds, or account balance.
-- **Winner-Only Decryption**: Access Control Lists (`FHE.allow`) ensure that **only the actual winner can decrypt their non-zero prize**, while everyone else decrypts 0 without leaking any public data.
-- **No-Loss Principal**: Users can withdraw their full principal at any time via `withdrawPrincipal`.
+## What Users Can Do
 
----
+- Faucet: mint Sepolia test USDC, approve the wrapper, and wrap into cUSDC.
+- Deposit: encrypt a cUSDC amount client-side and submit the encrypted input proof onchain.
+- Decrypt locally: use EIP-712 user decryption to view only the connected wallet's balance, principal, and prize handles.
+- Draw: a keeper automatically runs the draw when `nextDrawAt` is reached.
+- Claim: winners decrypt their prize handle and claim the encrypted prize into their cUSDC balance.
+- Withdraw: users can withdraw their full encrypted principal at any time.
 
-## 🏗️ Architecture
+## Confidentiality Design
 
-```
-                                    +------------------------------------------+
-                                    |         User Wallet (RainbowKit)         |
-                                    +------------------------------------------+
-                                                         |
-                                 1. Encrypted Deposit    |    4. EIP-712 User Decrypt
-                                 (createEncryptedInput)  |    (Claim Winnings / Balance)
-                                                         v
-+-------------------------------------------------------------------------------------------------------+
-|                                        Veil Clubs Protocol                                            |
-|                                                                                                       |
-|   +-----------------------------------------------------------------------------------------------+   |
-|   |  VeilConfidentialToken (ERC-7984)                                                             |   |
-|   |  Confidential transfer, mint, allowance, transient ACL                                         |   |
-|   +-----------------------------------------------------------------------------------------------+   |
-|                                                |                                                      |
-|                                                v                                                      |
-|   +-----------------------------------------------------------------------------------------------+   |
-|   |  VeilClubs (FHEVM / ZamaEthereumConfig)                                                       |   |
-|   |  - Global Pool (Public ID 0) & Private Clubs (Invite-Gated)                                   |   |
-|   |  - Encrypted Accounting: `principal[user]`, `encryptedTotalPrincipal`, `encryptedYield`       |   |
-|   |  - FHE Draw Kernel: `executeDraw()` using `FHE.randEuint64()` & homomorphic selector          |   |
-|   |  - Prize Distribution: `claimPrize()` transfers encrypted prize to winner                      |   |
-|   +-----------------------------------------------------------------------------------------------+   |
-+-------------------------------------------------------------------------------------------------------+
-                                                         ^
-                                                         | 3. Periodic Trigger
-                                    +------------------------------------------+
-                                    |       Automated Keeper (Backend)         |
-                                    +------------------------------------------+
-```
+Individual deposits, wallet balances, principal positions, prize amounts, and losing prize handles remain encrypted as `euint64` values. The frontend never stores decrypted balances onchain or in the backend; decrypted values live only in local UI state after the connected wallet signs an EIP-712 user-decryption request.
 
----
+Winner selection is performed onchain over encrypted balances:
 
-## 📂 Repository Structure
+1. The keeper calls `prepareWeightedDraw(clubId)`.
+2. The contract marks only the encrypted aggregate principal handle as publicly decryptable.
+3. The keeper asks the Zama relayer/KMS to public-decrypt that aggregate total and receives a KMS proof.
+4. The keeper calls `triggerWeightedDraw(clubId, commitment, totalPrincipal, proof)`.
+5. The contract verifies the KMS proof with `FHE.checkSignatures`.
+6. The contract generates FHE randomness, computes a random threshold modulo the verified aggregate total, walks encrypted cumulative principal buckets, and allocates the encrypted prize to the selected bucket with `FHE.select`.
+7. Only each member can user-decrypt their own prize handle; the winner sees a non-zero prize.
 
-- **[`contracts/`](file:///d:/PythonTool/VeilsFi/contracts)**:
-  - [`VeilConfidentialToken.sol`](file:///d:/PythonTool/VeilsFi/contracts/contracts/VeilConfidentialToken.sol): Confidential ERC-7984 token for Sepolia testnet.
-  - [`VeilClubs.sol`](file:///d:/PythonTool/VeilsFi/contracts/contracts/VeilClubs.sol): Core pool & private club contract with on-chain verifiable FHE draw engine.
-  - [`scripts/compile-solc.js`](file:///d:/PythonTool/VeilsFi/contracts/scripts/compile-solc.js): Solc build script with Zama FHE compiler pipeline.
-  - [`scripts/deploy.js`](file:///d:/PythonTool/VeilsFi/contracts/scripts/deploy.js): Deployment script targeting Sepolia.
-- **[`frontend/`](file:///d:/PythonTool/VeilsFi/frontend)**:
-  - Built with React, Vite, Tailwind CSS, Three.js (interactive 3D globe), Wagmi & RainbowKit.
-  - Implements **Dark Tech-Minimalism** visual aesthetic according to [`DESIGN.md`](file:///d:/PythonTool/VeilsFi/frontend/DESIGN.md).
-  - Complete dApp views: Dashboard, Global Pool, Private Clubs, Draws History, Account & Documentation.
-- **[`backend/`](file:///d:/PythonTool/VeilsFi/backend)**:
-  - Node.js keeper daemon, indexer, rate-limited faucet, and Supabase integration.
+### Documented Leakage
 
----
+The aggregate pool principal is public-decrypted at draw time so randomness can be bounded by a verified total without revealing individual balances. Individual deposit amounts and per-wallet odds are not disclosed by the contract. Member count, pool ids, timestamps, draw ids, and transaction hashes are public metadata.
 
-## ⚡ Quick Start
+## Yield Source
 
-### 1. Smart Contracts
+Sepolia does not provide production yield for the demo token, so VeilHubs uses an admin/keeper-funded encrypted prize reserve:
+
+- Admin or keeper gets cUSDC through the faucet.
+- Admin or keeper clicks `Fund Prize` in the app.
+- The app encrypts the funding amount and calls `accrueYield(clubId, encryptedAmount, inputProof)`.
+- The next draw awards the encrypted reserve.
+
+The backend keeper can also fund this reserve automatically before each due draw. This is still a mock yield source: it transfers cUSDC from the keeper wallet into the encrypted prize reserve; it does not mint tokens or generate real lending yield. Keep the keeper wallet funded with Sepolia ETH for gas and enough cUSDC for `KEEPER_YIELD_AMOUNT`.
+
+A production integration would replace `accrueYield` funding with a yield adapter that deposits principal into a real strategy and periodically transfers the generated confidential yield into `encryptedYield`.
+
+## Repository
+
+- `contracts/`: Solidity contract and Sepolia deploy script.
+- `frontend/`: React/Vite dApp with Wagmi, RainbowKit, and Zama Relayer SDK.
+- `backend/`: public metadata API plus keeper loop for automated weighted draws.
+
+## Deploy Contracts
+
 ```bash
 cd contracts
+npm install
+cp .env.example .env
+npm run build
+npm run deploy:sepolia
+```
+
+Useful contract env:
+
+```env
+SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+PRIVATE_KEY=0xyour_deployer_private_key
+KEEPER_ADDRESS=0xyour_keeper_wallet
+GLOBAL_DRAW_INTERVAL_SECONDS=120
+DEPOSIT_TOKEN_ADDRESS=0x7c5BF43B851c1dff1a4feE8dB225b87f2C223639
+```
+
+Use `GLOBAL_DRAW_INTERVAL_SECONDS=120` for demo testing. Use a longer interval for production-like deployments.
+
+## Deploy Backend Keeper
+
+```bash
+cd backend
+npm install
+npm run start
+```
+
+Railway env:
+
+```env
+KEEPER_ENABLED=true
+KEEPER_PRIVATE_KEY=0xyour_keeper_private_key
+VEIL_CLUBS_ADDRESS=0xyour_deployed_veilclubs
+VEIL_TOKEN_ADDRESS=0xyour_deployed_cusdc
+KEEPER_AUTO_FUND_YIELD=true
+KEEPER_YIELD_AMOUNT=10
+KEEPER_YIELD_MIN_MEMBERS=1
+KEEPER_OPERATOR_APPROVAL_SECONDS=604800
+ZAMA_FHEVM_API_KEY=your_optional_zama_api_key
+RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+FRONTEND_ORIGIN=https://your-frontend.example
+```
+
+With `KEEPER_AUTO_FUND_YIELD=true`, the keeper checks due clubs, decrypts only its own cUSDC balance locally, approves `VeilClubs` as token operator if needed, encrypts `KEEPER_YIELD_AMOUNT`, calls `accrueYield`, then runs the weighted draw. If the keeper balance is too low, the draw is skipped and the backend logs the missing amount.
+
+Public Sepolia RPCs are tried first. `RPC_URL` is used as the private fallback when public RPCs fail or rate-limit.
+
+To pre-fund the keeper wallet with cUSDC before enabling auto-fund:
+
+```bash
+cd backend
+npm run keeper:faucet -- 1000
+```
+
+The script uses `KEEPER_PRIVATE_KEY`, mints `1000` Sepolia test USDC to that wallet, approves the cUSDC wrapper, and wraps it into confidential cUSDC. The amount can also be set with `KEEPER_FAUCET_AMOUNT`.
+
+## Deploy Frontend
+
+```bash
+cd frontend
 npm install
 npm run build
 ```
 
-To deploy to Sepolia:
-```bash
-cp .env.example .env
-# Fill SEPOLIA_RPC_URL and PRIVATE_KEY
-npm run deploy:sepolia
+Frontend env:
+
+```env
+VITE_VEIL_CLUBS_ADDRESS=0xyour_deployed_veilclubs
+VITE_VEIL_TOKEN_ADDRESS=0x7c5BF43B851c1dff1a4feE8dB225b87f2C223639
+VITE_VEIL_UNDERLYING_TOKEN_ADDRESS=0x9b5Cd13b8eFbB58Dc25A05CF411D8056058aDFfF
+VITE_KEEPER_ADDRESS=0xyour_keeper_wallet
+VITE_BACKEND_URL=https://your-railway-backend.example
+VITE_SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
 ```
 
-### 2. Frontend dApp
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+## Bounty Checklist
 
-### 3. Backend Keeper & Indexer
-```bash
-cd backend
-npm install
-cp .env.example .env
-npm run dev
-```
-
----
-
-## 🏆 Bounty Evaluation Checklist
-
-- [x] **Confidential PoolTogether Mechanism**: No-loss savings + prize pool powered by yield.
-- [x] **Encrypted Balances & Yield**: All calculations done in `euint64` ciphertext handles.
-- [x] **Verifiable FHE Winner Selection**: Homomorphic winner selection directly onchain via `FHE.randEuint64` and `FHE.select`.
-- [x] **Winner-Only Decryption**: ACL guarantees only the winning address can decrypt the prize amount.
-- [x] **Target Network**: Configured and ready for Ethereum Sepolia with Zama Coprocessor KMS.
-- [x] **Production Standard**: Dark tech-minimalism UI, high performance, modular architecture.
+- Web dApp with wallet connect and Sepolia flow.
+- ERC-7984 confidential cUSDC deposit flow.
+- Encrypted per-user balance and principal accounting.
+- Onchain weighted draw over encrypted balances with FHE randomness.
+- KMS-verified aggregate total used for bounded weighted selection.
+- Winner-only user decryption and encrypted prize claim.
+- No-loss principal withdrawal.
+- Automated keeper flow plus documented admin-funded mock yield.
+- Faucet flow and clear error handling for approval, balance, network, and wallet rejection.

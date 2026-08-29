@@ -302,6 +302,8 @@ function AppContent({ activePage, navigatePage }) {
   const [drawsState, setDrawsState] = useState(defaultDrawHistory);
   const [walletBalance, setWalletBalance] = useState(null);
   const [userDeposit, setUserDeposit] = useState(null);
+  const [pendingPrize, setPendingPrize] = useState(null);
+  const [pendingPrizeDraw, setPendingPrizeDraw] = useState(null);
   const [isDecrypted, setIsDecrypted] = useState(false);
   const [isClaimed, setIsClaimed] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
@@ -368,6 +370,17 @@ function AppContent({ activePage, navigatePage }) {
     setPoolsState(nextPools);
   };
 
+  const refreshDraws = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/draws`);
+      if (!res.ok) return;
+      const payload = await res.json();
+      setDrawsState(payload.draws || []);
+    } catch {
+      // Draw metadata is refreshed opportunistically; onchain reads remain the source of truth.
+    }
+  };
+
   const getDecryptedTokenBalance = async () => {
     const tokenBalanceHandle = await publicClient.readContract({
       ...tokenContract,
@@ -391,7 +404,11 @@ function AppContent({ activePage, navigatePage }) {
 
   useEffect(() => {
     refreshPools();
-    const timer = setInterval(refreshPools, 30000);
+    refreshDraws();
+    const timer = setInterval(() => {
+      refreshPools();
+      refreshDraws();
+    }, 30000);
     return () => clearInterval(timer);
   }, [publicClient, clubContract]);
 
@@ -411,6 +428,19 @@ function AppContent({ activePage, navigatePage }) {
     .filter((timestamp) => timestamp >= nowMs)
     .sort((a, b) => a - b)[0];
   const dashboardNextDraw = hasReadyDraw ? "READY" : formatCountdown(nextDrawAt, nowMs);
+  const recentDraws = useMemo(
+    () =>
+      drawsState
+        .filter((draw) => draw?.clubId != null && draw?.drawNumber != null)
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+        .slice(0, 10),
+    [drawsState]
+  );
+
+  const isDrawOperatorForClub = (clubId) => {
+    const pool = displayPools.find((item) => String(item.contractId) === String(clubId));
+    return sameAddress(address, pool?.admin) || sameAddress(address, pool?.keeper);
+  };
 
   const ensureOperatorApproved = async (userAddress) => {
     if (!walletClient || !publicClient || !IS_TOKEN_CONFIGURED) return;
@@ -508,6 +538,8 @@ function AppContent({ activePage, navigatePage }) {
 
       let decryptedDeposit = 0n;
       let decryptedToken = await getDecryptedTokenBalance();
+      let decryptedPrize = 0n;
+      let decryptedPrizeDraw = null;
 
       if (globalBalanceHandle && globalBalanceHandle !== ZERO_BYTES32) {
         try {
@@ -522,10 +554,49 @@ function AppContent({ activePage, navigatePage }) {
         }
       }
 
+      for (const draw of recentDraws) {
+        try {
+          const claimed = await publicClient.readContract({
+            ...clubContract,
+            functionName: "isPrizeClaimed",
+            args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
+          });
+          if (claimed) continue;
+
+          const prizeHandle = await publicClient.readContract({
+            ...clubContract,
+            functionName: "encryptedPrizeOf",
+            args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
+          });
+          if (prizeHandle && prizeHandle !== ZERO_BYTES32) {
+            decryptedPrize = await userDecryptUint64({
+              handle: prizeHandle,
+              contractAddress: VEIL_CLUBS_ADDRESS,
+              userAddress: address,
+              walletClient
+            });
+            if (decryptedPrize > 0n) {
+              decryptedPrizeDraw = draw;
+              break;
+            }
+          }
+        } catch {
+          // No readable prize for this wallet/draw; try the next recent draw.
+        }
+      }
+
       setUserDeposit(decryptedDeposit);
       setWalletBalance(decryptedToken);
+      setPendingPrize(decryptedPrize);
+      setPendingPrizeDraw(decryptedPrizeDraw);
+      setIsClaimed(false);
       setIsDecrypted(true);
-      showToast("Local Decrypt Complete", "Your cUSDC balance and principal were decrypted locally for this wallet.");
+      showToast(
+        "Local Decrypt Complete",
+        decryptedPrize > 0n
+          ? `Your balance, principal, and draw #${decryptedPrizeDraw.drawNumber} prize were decrypted locally.`
+          : "Your cUSDC balance and principal were decrypted locally for this wallet."
+      );
     } catch (err) {
       if (isUserRejectedRequest(err)) {
         showToast("Decryption Cancelled", "User rejected EIP-712 decryption signature.");
@@ -537,6 +608,8 @@ function AppContent({ activePage, navigatePage }) {
 
   const handleHideBalance = () => {
     setIsDecrypted(false);
+    setPendingPrize(null);
+    setPendingPrizeDraw(null);
     showToast("Balance Hidden", "Positions hidden in local component state.");
   };
 
@@ -576,18 +649,24 @@ function AppContent({ activePage, navigatePage }) {
       showToast("Wallet Required", "Connect wallet to claim prize payouts.");
       return;
     }
+    if (!pendingPrizeDraw || !pendingPrize || pendingPrize <= 0n) {
+      showToast("Decrypt Prize First", "Decrypt your latest draw prize locally before claiming.");
+      return;
+    }
 
     try {
-      showToast("Claiming Prize", "Submitting prize claim transaction...");
+      showToast("Claiming Prize", `Submitting prize claim for draw #${pendingPrizeDraw.drawNumber}...`);
       const hash = await walletClient.writeContract({
         ...clubContract,
         functionName: "claimPrize",
-        args: [0n]
+        args: [BigInt(pendingPrizeDraw.clubId), BigInt(pendingPrizeDraw.drawNumber)]
       });
       showToast("Transaction Sent", "Waiting for claim confirmation...", hash);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status === "success") {
         setIsClaimed(true);
+        setPendingPrize(0n);
+        setPendingPrizeDraw(null);
         showToast("Prize Claimed", "Encrypted prize handle claimed into your confidential token balance.", hash);
       } else {
         showToast("Claim Reverted", "No claimable prize found or transaction reverted.", hash);
@@ -597,6 +676,68 @@ function AppContent({ activePage, navigatePage }) {
         showToast("Claim Cancelled", "User rejected the transaction.");
       } else {
         showToast("Claim Error", err.shortMessage || err.message || "Claim failed.");
+      }
+    }
+  };
+
+  const handleFundYield = async (amountInput = "10", poolName = "Global Pool", clubId = 0n) => {
+    if (!address || !walletClient || !publicClient || !IS_CONTRACT_CONFIGURED) {
+      showToast("Wallet Required", "Connect a Sepolia wallet to fund encrypted yield.");
+      return;
+    }
+    if (!isDrawOperatorForClub(clubId)) {
+      showToast("Operator Required", "Only the pool admin or keeper can fund the encrypted prize reserve.");
+      return;
+    }
+
+    try {
+      const parsedAmount = parseTokenAmount(amountInput);
+      let availableBalance = isDecrypted && walletBalance != null ? walletBalance : null;
+      if (availableBalance == null) {
+        showToast(
+          "Balance Check Required",
+          "Sign EIP-712 to decrypt your cUSDC balance locally before funding the prize reserve."
+        );
+        availableBalance = await getDecryptedTokenBalance();
+        setWalletBalance(availableBalance);
+        setIsDecrypted(true);
+      }
+
+      if (availableBalance < parsedAmount) {
+        showToast(
+          "Insufficient Balance",
+          `Wallet has ${formatUnits(availableBalance, TOKEN_DECIMALS)} cUSDC, but yield funding needs ${formatUnits(parsedAmount, TOKEN_DECIMALS)} cUSDC.`
+        );
+        return;
+      }
+
+      await ensureOperatorApproved(address);
+      showToast("Encrypting Yield", `Generating FHE proof for ${amountInput} cUSDC prize funding...`);
+      const { handle, inputProof } = await encryptUint64Input(VEIL_CLUBS_ADDRESS, address, parsedAmount);
+
+      showToast("Submitting Yield", `Funding encrypted prize reserve for ${poolName}...`);
+      const hash = await walletClient.writeContract({
+        ...clubContract,
+        functionName: "accrueYield",
+        args: [BigInt(clubId), handle, inputProof]
+      });
+
+      showToast("Transaction Sent", "Waiting for yield funding confirmation...", hash);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status === "success") {
+        if (isDecrypted || availableBalance != null) {
+          setWalletBalance(availableBalance - parsedAmount);
+          setIsDecrypted(true);
+        }
+        showToast("Yield Funded", `Encrypted prize reserve funded with ${amountInput} cUSDC.`, hash);
+      } else {
+        showToast("Yield Reverted", "Transaction reverted on Sepolia.", hash);
+      }
+    } catch (err) {
+      if (isUserRejectedRequest(err)) {
+        showToast("Yield Cancelled", "User rejected the wallet request.");
+      } else {
+        showToast("Yield Error", err.shortMessage || err.message || "Encrypted yield funding failed.");
       }
     }
   };
@@ -788,6 +929,7 @@ function AppContent({ activePage, navigatePage }) {
             isDecrypted={isDecrypted}
             onDecrypt={handleDecrypt}
             onDeposit={handleDeposit}
+            onFundYield={handleFundYield}
             onHideBalance={handleHideBalance}
             pool={displayPools.find((pool) => pool.id === "global" || String(pool.contractId) === "0") || defaultPools[0]}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
@@ -800,6 +942,7 @@ function AppContent({ activePage, navigatePage }) {
             onCreateClub={handleCreateClub}
             onDecrypt={handleDecrypt}
             onDeposit={handleDeposit}
+            onFundYield={handleFundYield}
             onHideBalance={handleHideBalance}
             onJoinClub={handleJoinClub}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
@@ -817,6 +960,8 @@ function AppContent({ activePage, navigatePage }) {
             onFaucet={handleFaucet}
             onHideBalance={handleHideBalance}
             onWithdraw={handleWithdraw}
+            pendingPrize={getDisplayBalance(pendingPrize)}
+            pendingPrizeDraw={pendingPrizeDraw}
             userDeposit={getDisplayBalance(userDeposit)}
             walletBalance={getDisplayBalance(walletBalance)}
           />

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server.js",
-    "check": "node --check src/server.js"
+    "check": "node --check src/server.js",
+    "keeper:faucet": "node src/scripts/fundKeeperCusdc.js"
   },
   "dependencies": {
     "@zama-fhe/relayer-sdk": "^0.4.4",

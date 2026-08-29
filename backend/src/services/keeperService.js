@@ -1,16 +1,24 @@
-import { createPublicClient, createWalletClient, decodeEventLog, fallback, http } from "viem";
+import { createPublicClient, createWalletClient, decodeEventLog, fallback, formatUnits, http, parseUnits, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { createInstance, SepoliaConfig } from "@zama-fhe/relayer-sdk/node";
 import {
+  KEEPER_AUTO_FUND_YIELD,
   KEEPER_ENABLED,
   KEEPER_INTERVAL_MS,
+  KEEPER_OPERATOR_APPROVAL_SECONDS,
   KEEPER_PRIVATE_KEY,
+  KEEPER_YIELD_AMOUNT,
+  KEEPER_YIELD_MIN_MEMBERS,
+  MAX_EUINT64,
   PUBLIC_DECRYPT_TIMEOUT_MS,
   PUBLIC_RPC_URLS,
   RPC_URL,
   SEPOLIA_CHAIN,
+  TOKEN_DECIMALS,
   VEIL_CLUBS_ADDRESS,
   VEIL_CLUBS_KEEPER_ABI,
+  VEIL_TOKEN_ADDRESS,
+  VEIL_TOKEN_KEEPER_ABI,
   ZAMA_FHEVM_API_KEY,
   ZERO_BYTES32
 } from "../config/constants.js";
@@ -22,6 +30,11 @@ let fheRpcIndex = 0;
 
 function sameAddress(left, right) {
   return String(left || "").toLowerCase() === String(right || "").toLowerCase();
+}
+
+function asHex(value) {
+  if (typeof value === "string") return value.startsWith("0x") ? value : `0x${value}`;
+  return toHex(value);
 }
 
 function orderedRpcUrls() {
@@ -87,6 +100,141 @@ async function publicDecryptTotalPrincipal(totalPrincipalHandle) {
     }
     throw error;
   }
+}
+
+async function userDecryptUint64({ handle, contractAddress, clients }) {
+  const instance = await getFheInstance();
+  const keypair = instance.generateKeypair();
+  const startTimestamp = Math.floor(Date.now() / 1000);
+  const durationDays = 1;
+  const contractAddresses = [contractAddress];
+  const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays);
+  const signature = await clients.walletClient.signTypedData({
+    account: clients.account,
+    domain: eip712.domain,
+    types: {
+      UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification
+    },
+    primaryType: "UserDecryptRequestVerification",
+    message: eip712.message
+  });
+
+  const result = await instance.userDecrypt(
+    [{ handle, contractAddress }],
+    keypair.privateKey,
+    keypair.publicKey,
+    signature.replace(/^0x/, ""),
+    contractAddresses,
+    clients.account.address,
+    startTimestamp,
+    durationDays
+  );
+  return BigInt(result[handle] ?? result[handle.toLowerCase()] ?? 0);
+}
+
+async function readKeeperTokenBalance(clients) {
+  const handle = await clients.publicClient.readContract({
+    address: VEIL_TOKEN_ADDRESS,
+    abi: VEIL_TOKEN_KEEPER_ABI,
+    functionName: "confidentialBalanceOf",
+    args: [clients.account.address]
+  });
+  if (!handle || handle === ZERO_BYTES32) return 0n;
+  return userDecryptUint64({ handle, contractAddress: VEIL_TOKEN_ADDRESS, clients });
+}
+
+async function ensureKeeperTokenOperator(clients) {
+  const isOperator = await clients.publicClient.readContract({
+    address: VEIL_TOKEN_ADDRESS,
+    abi: VEIL_TOKEN_KEEPER_ABI,
+    functionName: "isOperator",
+    args: [clients.account.address, VEIL_CLUBS_ADDRESS]
+  });
+  if (isOperator) return;
+
+  const until = Math.floor(Date.now() / 1000) + KEEPER_OPERATOR_APPROVAL_SECONDS;
+  await clients.publicClient.simulateContract({
+    account: clients.account,
+    address: VEIL_TOKEN_ADDRESS,
+    abi: VEIL_TOKEN_KEEPER_ABI,
+    functionName: "setOperator",
+    args: [VEIL_CLUBS_ADDRESS, until]
+  });
+  const hash = await clients.walletClient.writeContract({
+    address: VEIL_TOKEN_ADDRESS,
+    abi: VEIL_TOKEN_KEEPER_ABI,
+    functionName: "setOperator",
+    args: [VEIL_CLUBS_ADDRESS, until]
+  });
+  console.log(`[keeper] setOperator(${VEIL_CLUBS_ADDRESS}) submitted: ${hash}`);
+  const receipt = await clients.publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error(`setOperator reverted: ${hash}`);
+}
+
+async function encryptYieldAmount({ amount, clients }) {
+  const instance = await getFheInstance();
+  const encryptedInput = await instance
+    .createEncryptedInput(VEIL_CLUBS_ADDRESS, clients.account.address)
+    .add64(amount)
+    .encrypt();
+
+  return {
+    encryptedAmount: asHex(encryptedInput.handles[0]),
+    inputProof: asHex(encryptedInput.inputProof)
+  };
+}
+
+async function fundPrizeReserve({ clients, clubId, clubName }) {
+  if (!KEEPER_AUTO_FUND_YIELD) return true;
+  if (!VEIL_TOKEN_ADDRESS) {
+    console.warn("[keeper] auto-fund skipped: set VEIL_TOKEN_ADDRESS to fund encrypted prize reserves.");
+    return false;
+  }
+
+  const amount = parseUnits(KEEPER_YIELD_AMOUNT, TOKEN_DECIMALS);
+  if (amount <= 0n) {
+    console.warn("[keeper] auto-fund skipped: KEEPER_YIELD_AMOUNT must be greater than zero.");
+    return false;
+  }
+  if (amount > MAX_EUINT64) {
+    console.warn("[keeper] auto-fund skipped: KEEPER_YIELD_AMOUNT exceeds euint64 capacity.");
+    return false;
+  }
+
+  const balance = await readKeeperTokenBalance(clients);
+  if (balance < amount) {
+    console.warn(
+      `[keeper] auto-fund skipped for ${clubName}: keeper has ${formatUnits(balance, TOKEN_DECIMALS)} cUSDC, needs ${KEEPER_YIELD_AMOUNT} cUSDC.`
+    );
+    return false;
+  }
+
+  await ensureKeeperTokenOperator(clients);
+  const { encryptedAmount, inputProof } = await encryptYieldAmount({ amount, clients });
+
+  await clients.publicClient.simulateContract({
+    account: clients.account,
+    address: VEIL_CLUBS_ADDRESS,
+    abi: VEIL_CLUBS_KEEPER_ABI,
+    functionName: "accrueYield",
+    args: [BigInt(clubId), encryptedAmount, inputProof]
+  });
+
+  const hash = await clients.walletClient.writeContract({
+    address: VEIL_CLUBS_ADDRESS,
+    abi: VEIL_CLUBS_KEEPER_ABI,
+    functionName: "accrueYield",
+    args: [BigInt(clubId), encryptedAmount, inputProof]
+  });
+  console.log(`[keeper] accrueYield(${clubId}, ${KEEPER_YIELD_AMOUNT} cUSDC) submitted: ${hash}`);
+
+  const receipt = await clients.publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") {
+    console.warn(`[keeper] accrueYield(${clubId}) reverted: ${hash}`);
+    return false;
+  }
+  console.log(`[keeper] funded ${KEEPER_YIELD_AMOUNT} cUSDC prize reserve for ${clubName}: ${hash}`);
+  return true;
 }
 
 function findDecodedEvent(receipt, eventName) {
@@ -183,10 +331,15 @@ export async function runKeeperTick(clients) {
         args: [BigInt(clubId)]
       });
 
+      const memberCount = Number(clubView.memberCount || 0);
       if (!clubView.exists) continue;
       if (!sameAddress(clients.account.address, clubView.keeper) && !sameAddress(clients.account.address, clubView.admin)) continue;
-      if (Number(clubView.memberCount || 0) === 0) continue;
+      if (memberCount === 0) continue;
       if (Number(clubView.nextDrawAt || 0) > now) continue;
+      if (KEEPER_AUTO_FUND_YIELD && memberCount < KEEPER_YIELD_MIN_MEMBERS) continue;
+
+      const funded = await fundPrizeReserve({ clients, clubId, clubName });
+      if (!funded) continue;
 
       await clients.publicClient.simulateContract({
         account: clients.account,

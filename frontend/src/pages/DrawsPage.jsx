@@ -3,7 +3,20 @@ import { Panel } from "../components/common/Panel.jsx";
 import { DataTable } from "../components/common/Tables.jsx";
 import { PrivacyList } from "../components/common/Inputs.jsx";
 
+function shortHash(value) {
+  if (!value || value === "encrypted") return value || "--";
+  return `${String(value).slice(0, 10)}...${String(value).slice(-6)}`;
+}
+
 export function DrawsPage({ draws }) {
+  const rows = draws.map((draw) => [
+    `#${draw.drawNumber}`,
+    draw.clubName || `Club ${draw.clubId}`,
+    draw.winner || "winner-decrypts",
+    shortHash(draw.prizeHandle),
+    draw.txHash ? `${draw.status} ${shortHash(draw.txHash)}` : draw.status
+  ]);
+
   return (
     <div>
       <PageHeader
@@ -15,7 +28,7 @@ export function DrawsPage({ draws }) {
         <Panel title="Recent Draws">
           <DataTable
             columns={["draw", "pool", "winner", "prize handle", "status"]}
-            rows={draws}
+            rows={rows}
           />
         </Panel>
         <Panel title="Privacy Surface">
