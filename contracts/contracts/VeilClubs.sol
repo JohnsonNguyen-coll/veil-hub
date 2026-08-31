@@ -143,9 +143,12 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     function deposit(uint256 clubId, externalEuint64 encryptedAmount, bytes calldata inputProof) external {
         Club storage club = _requireClub(clubId);
 
-        euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
-        FHE.allowTransient(amount, address(depositToken));
-        euint64 received = depositToken.confidentialTransferFrom(msg.sender, address(this), amount);
+        euint64 received = depositToken.confidentialTransferFrom(
+            msg.sender,
+            address(this),
+            encryptedAmount,
+            inputProof
+        );
 
         _joinIfNeeded(club, clubId, msg.sender);
 
@@ -181,9 +184,12 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
             revert NotClubAdminOrKeeper(clubId, msg.sender);
         }
 
-        euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
-        FHE.allowTransient(amount, address(depositToken));
-        euint64 received = depositToken.confidentialTransferFrom(msg.sender, address(this), amount);
+        euint64 received = depositToken.confidentialTransferFrom(
+            msg.sender,
+            address(this),
+            encryptedAmount,
+            inputProof
+        );
 
         club.encryptedYield = FHE.add(club.encryptedYield, received);
         _allowContractOnly(club.encryptedYield);
