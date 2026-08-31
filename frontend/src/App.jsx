@@ -363,6 +363,7 @@ function AppContent({ activePage, navigatePage }) {
   const [walletBalance, setWalletBalance] = useState(null);
   const [userDeposit, setUserDeposit] = useState(null);
   const [pendingPrize, setPendingPrize] = useState(null);
+  const [pendingPrizes, setPendingPrizes] = useState([]);
   const [pendingPrizeDraw, setPendingPrizeDraw] = useState(null);
   const [isDecrypted, setIsDecrypted] = useState(false);
   const [isClaimed, setIsClaimed] = useState(false);
@@ -498,9 +499,16 @@ function AppContent({ activePage, navigatePage }) {
     () =>
       drawsState
         .filter((draw) => draw?.clubId != null && draw?.drawNumber != null)
-        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-        .slice(0, 10),
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()),
     [drawsState]
+  );
+  const displayPendingPrizes = useMemo(
+    () =>
+      pendingPrizes.map((prize) => ({
+        ...prize,
+        displayAmount: getDisplayBalance(prize.amount)
+      })),
+    [pendingPrizes]
   );
 
   const isDrawOperatorForClub = (clubId) => {
@@ -604,8 +612,8 @@ function AppContent({ activePage, navigatePage }) {
 
       let decryptedDeposit = 0n;
       let decryptedToken = await getDecryptedTokenBalance();
-      let decryptedPrize = 0n;
-      let decryptedPrizeDraw = null;
+      let decryptedPendingWinnings = 0n;
+      const decryptedPrizes = [];
 
       if (globalBalanceHandle && globalBalanceHandle !== ZERO_BYTES32) {
         try {
@@ -618,6 +626,24 @@ function AppContent({ activePage, navigatePage }) {
         } catch {
           // ignore handle decrypt failure if uninitialized
         }
+      }
+
+      try {
+        const pendingWinningsHandle = await publicClient.readContract({
+          ...clubContract,
+          functionName: "encryptedPendingWinningsOf",
+          args: [address]
+        });
+        if (pendingWinningsHandle && pendingWinningsHandle !== ZERO_BYTES32) {
+          decryptedPendingWinnings = await userDecryptUint64({
+            handle: pendingWinningsHandle,
+            contractAddress: VEIL_CLUBS_ADDRESS,
+            userAddress: address,
+            walletClient
+          });
+        }
+      } catch {
+        // Per-draw prize handles below still provide a fallback for older deployments.
       }
 
       for (const draw of recentDraws) {
@@ -635,15 +661,14 @@ function AppContent({ activePage, navigatePage }) {
             args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
           });
           if (prizeHandle && prizeHandle !== ZERO_BYTES32) {
-            decryptedPrize = await userDecryptUint64({
+            const decryptedPrize = await userDecryptUint64({
               handle: prizeHandle,
               contractAddress: VEIL_CLUBS_ADDRESS,
               userAddress: address,
               walletClient
             });
             if (decryptedPrize > 0n) {
-              decryptedPrizeDraw = draw;
-              break;
+              decryptedPrizes.push({ ...draw, amount: decryptedPrize });
             }
           }
         } catch {
@@ -651,16 +676,19 @@ function AppContent({ activePage, navigatePage }) {
         }
       }
 
+      const decryptedDrawPrizeTotal = decryptedPrizes.reduce((total, prize) => total + prize.amount, 0n);
+      const decryptedPrizeTotal = decryptedPendingWinnings > 0n ? decryptedPendingWinnings : decryptedDrawPrizeTotal;
       setUserDeposit(decryptedDeposit);
       setWalletBalance(decryptedToken);
-      setPendingPrize(decryptedPrize);
-      setPendingPrizeDraw(decryptedPrizeDraw);
-      setIsClaimed(false);
+      setPendingPrize(decryptedPrizeTotal);
+      setPendingPrizes(decryptedPrizes);
+      setPendingPrizeDraw(decryptedPrizes[0] || null);
+      setIsClaimed(decryptedPrizes.length === 0);
       setIsDecrypted(true);
       showToast(
         "Local Decrypt Complete",
-        decryptedPrize > 0n
-          ? `Your balance, principal, and draw #${decryptedPrizeDraw.drawNumber} prize were decrypted locally.`
+        decryptedPrizeTotal > 0n
+          ? `${decryptedPrizes.length} pending prize${decryptedPrizes.length === 1 ? "" : "s"} decrypted locally.`
           : "Your cUSDC balance and principal were decrypted locally for this wallet."
       );
     } catch (err) {
@@ -675,6 +703,7 @@ function AppContent({ activePage, navigatePage }) {
   const handleHideBalance = () => {
     setIsDecrypted(false);
     setPendingPrize(null);
+    setPendingPrizes([]);
     setPendingPrizeDraw(null);
     showToast("Balance Hidden", "Positions hidden in local component state.");
   };
@@ -797,29 +826,40 @@ function AppContent({ activePage, navigatePage }) {
     }
   };
 
-  const handleClaim = async () => {
+  const removePendingPrize = (claimedPrize) => {
+    const nextPendingPrizes = pendingPrizes.filter(
+      (prize) =>
+        String(prize.clubId) !== String(claimedPrize.clubId) ||
+        String(prize.drawNumber) !== String(claimedPrize.drawNumber)
+    );
+    setPendingPrizes(nextPendingPrizes);
+    setPendingPrize(nextPendingPrizes.reduce((total, prize) => total + prize.amount, 0n));
+    setPendingPrizeDraw(nextPendingPrizes[0] || null);
+    setIsClaimed(nextPendingPrizes.length === 0);
+  };
+
+  const handleClaim = async (selectedPrize = null) => {
     if (!address || !walletClient || !publicClient || !IS_CONTRACT_CONFIGURED) {
       showToast("Wallet Required", "Connect wallet to claim prize payouts.");
       return;
     }
-    if (!pendingPrizeDraw || !pendingPrize || pendingPrize <= 0n) {
-      showToast("Decrypt Prize First", "Decrypt your latest draw prize locally before claiming.");
+    const claimTarget = selectedPrize || pendingPrizes[0] || pendingPrizeDraw;
+    if (!claimTarget || !pendingPrize || pendingPrize <= 0n) {
+      showToast("Decrypt Prize First", "Decrypt your pending prizes locally before claiming.");
       return;
     }
 
     try {
-      showToast("Claiming Prize", `Submitting prize claim for draw #${pendingPrizeDraw.drawNumber}...`);
+      showToast("Claiming Prize", `Submitting prize claim for draw #${claimTarget.drawNumber}...`);
       const hash = await walletClient.writeContract({
         ...clubContract,
         functionName: "claimPrize",
-        args: [BigInt(pendingPrizeDraw.clubId), BigInt(pendingPrizeDraw.drawNumber)]
+        args: [BigInt(claimTarget.clubId), BigInt(claimTarget.drawNumber)]
       });
       showToast("Transaction Sent", "Waiting for claim confirmation...", hash);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status === "success") {
-        setIsClaimed(true);
-        setPendingPrize(0n);
-        setPendingPrizeDraw(null);
+        removePendingPrize(claimTarget);
         showToast("Prize Claimed", "Encrypted prize handle claimed into your confidential token balance.", hash);
       } else {
         showToast("Claim Reverted", "No claimable prize found or transaction reverted.", hash);
@@ -829,6 +869,45 @@ function AppContent({ activePage, navigatePage }) {
         showToast("Claim Cancelled", "User rejected the transaction.");
       } else {
         showToast("Claim Error", err.shortMessage || err.message || "Claim failed.");
+      }
+    }
+  };
+
+  const handleClaimAll = async () => {
+    if (!address || !walletClient || !publicClient || !IS_CONTRACT_CONFIGURED) {
+      showToast("Wallet Required", "Connect wallet to claim prize payouts.");
+      return;
+    }
+    if (!pendingPrizes.length) {
+      showToast("No Prize To Claim", "Decrypt your pending prizes locally before claiming.");
+      return;
+    }
+
+    try {
+      const clubIds = pendingPrizes.map((prize) => BigInt(prize.clubId));
+      const drawIds = pendingPrizes.map((prize) => BigInt(prize.drawNumber));
+      showToast("Claiming Prizes", `Submitting ${pendingPrizes.length} pending prize claim${pendingPrizes.length === 1 ? "" : "s"}...`);
+      const hash = await walletClient.writeContract({
+        ...clubContract,
+        functionName: "claimPrizes",
+        args: [clubIds, drawIds]
+      });
+      showToast("Transaction Sent", "Waiting for claim-all confirmation...", hash);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status === "success") {
+        setIsClaimed(true);
+        setPendingPrize(0n);
+        setPendingPrizes([]);
+        setPendingPrizeDraw(null);
+        showToast("Prizes Claimed", "All pending encrypted prizes were claimed into your confidential token balance.", hash);
+      } else {
+        showToast("Claim Reverted", "One or more pending prizes could not be claimed.", hash);
+      }
+    } catch (err) {
+      if (isUserRejectedRequest(err)) {
+        showToast("Claim Cancelled", "User rejected the transaction.");
+      } else {
+        showToast("Claim Error", err.shortMessage || err.message || "Claim all failed.");
       }
     }
   };
@@ -1108,6 +1187,7 @@ function AppContent({ activePage, navigatePage }) {
             isClaimed={isClaimed}
             isDecrypted={isDecrypted}
             onClaim={handleClaim}
+            onClaimAll={handleClaimAll}
             onDecrypt={handleDecrypt}
             onFaucet={handleFaucet}
             onHideBalance={handleHideBalance}
@@ -1115,6 +1195,7 @@ function AppContent({ activePage, navigatePage }) {
             onWithdraw={handleWithdraw}
             pendingPrize={getDisplayBalance(pendingPrize)}
             pendingPrizeDraw={pendingPrizeDraw}
+            pendingPrizes={displayPendingPrizes}
             userDeposit={getDisplayBalance(userDeposit)}
             walletBalance={getDisplayBalance(walletBalance)}
           />

@@ -1,8 +1,9 @@
-export function Panel({ children, title }) {
+export function Panel({ action, children, title }) {
   return (
     <section className="bg-veil-black border border-veil-gray-light">
-      <div className="px-5 py-4 border-b border-veil-gray-light">
+      <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-veil-gray-light">
         <span className="font-label-caps text-label-caps text-veil-white opacity-60 uppercase">{title}</span>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
       <div className="p-5">{children}</div>
     </section>
