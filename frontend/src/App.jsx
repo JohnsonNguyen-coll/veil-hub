@@ -155,6 +155,17 @@ async function userDecryptUint64({ handle, contractAddress, userAddress, walletC
   });
 }
 
+async function publicDecryptUint64(handle) {
+  return withFheInstance(async (instance) => {
+    const result = await instance.publicDecrypt([handle]);
+    const clearValue = result.clearValues[handle] ?? result.clearValues[handle.toLowerCase()] ?? 0;
+    return {
+      clearValue: BigInt(clearValue),
+      decryptionProof: toHex(result.decryptionProof)
+    };
+  });
+}
+
 const TEST_ERC20_ABI = [
   {
     inputs: [
@@ -185,6 +196,39 @@ const CONFIDENTIAL_WRAPPER_ABI = [
     ],
     name: "wrap",
     outputs: [{ internalType: "euint64", name: "", type: "bytes32" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: "address", name: "receiver", type: "address" },
+      { indexed: true, internalType: "bytes32", name: "unwrapRequestId", type: "bytes32" },
+      { indexed: false, internalType: "euint64", name: "amount", type: "bytes32" }
+    ],
+    name: "UnwrapRequested",
+    type: "event"
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "from", type: "address" },
+      { internalType: "address", name: "to", type: "address" },
+      { internalType: "externalEuint64", name: "encryptedAmount", type: "bytes32" },
+      { internalType: "bytes", name: "inputProof", type: "bytes" }
+    ],
+    name: "unwrap",
+    outputs: [{ internalType: "bytes32", name: "", type: "bytes32" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { internalType: "bytes32", name: "unwrapRequestId", type: "bytes32" },
+      { internalType: "uint64", name: "unwrapAmountCleartext", type: "uint64" },
+      { internalType: "bytes", name: "decryptionProof", type: "bytes" }
+    ],
+    name: "finalizeUnwrap",
+    outputs: [],
     stateMutability: "nonpayable",
     type: "function"
   }
@@ -656,6 +700,93 @@ function AppContent({ activePage, navigatePage }) {
     }
   };
 
+  const handleUnwrap = async (amountInput) => {
+    if (!address || !walletClient || !publicClient || !IS_TOKEN_CONFIGURED) {
+      showToast("Wallet Required", "Connect a Sepolia wallet to unwrap cUSDC.");
+      return;
+    }
+
+    try {
+      const parsedAmount = parseTokenAmount(amountInput);
+      let availableBalance = isDecrypted && walletBalance != null ? walletBalance : null;
+      if (availableBalance == null) {
+        showToast("Balance Check Required", "Sign EIP-712 to decrypt your cUSDC balance locally before unwrap validation.");
+        availableBalance = await getDecryptedTokenBalance();
+        setWalletBalance(availableBalance);
+        setIsDecrypted(true);
+      }
+
+      if (availableBalance < parsedAmount) {
+        showToast(
+          "Insufficient Balance",
+          `Wallet has ${formatUnits(availableBalance, TOKEN_DECIMALS)} cUSDC, but unwrap needs ${formatUnits(parsedAmount, TOKEN_DECIMALS)} cUSDC.`
+        );
+        return;
+      }
+
+      showToast("Encrypting Unwrap", `Generating FHE proof for ${amountInput} cUSDC unwrap...`);
+      const { handle, inputProof } = await encryptUint64Input(VEIL_TOKEN_ADDRESS, address, parsedAmount);
+
+      showToast("Requesting Unwrap", "Burning cUSDC and opening a public decrypt request...");
+      const unwrapHash = await walletClient.writeContract({
+        address: VEIL_TOKEN_ADDRESS,
+        abi: CONFIDENTIAL_WRAPPER_ABI,
+        functionName: "unwrap",
+        args: [address, address, handle, inputProof]
+      });
+      showToast("Unwrap Requested", "Waiting for unwrap request confirmation...", unwrapHash);
+      const unwrapReceipt = await publicClient.waitForTransactionReceipt({ hash: unwrapHash });
+      if (unwrapReceipt.status !== "success") {
+        showToast("Unwrap Reverted", "The unwrap request reverted on Sepolia.", unwrapHash);
+        return;
+      }
+
+      let unwrapRequestId = null;
+      for (const log of unwrapReceipt.logs || []) {
+        try {
+          const decoded = decodeEventLog({ abi: CONFIDENTIAL_WRAPPER_ABI, data: log.data, topics: log.topics });
+          if (decoded.eventName === "UnwrapRequested") {
+            unwrapRequestId = decoded.args.unwrapRequestId;
+            break;
+          }
+        } catch {
+          // Ignore logs emitted by other contracts touched by the unwrap transaction.
+        }
+      }
+
+      if (!unwrapRequestId) {
+        showToast("Unwrap Pending", "Unwrap request confirmed, but the request id was not found in logs.", unwrapHash);
+        return;
+      }
+
+      showToast("Finalizing Unwrap", "Waiting for Zama public decrypt proof, then releasing USDC...");
+      const { clearValue, decryptionProof } = await publicDecryptUint64(unwrapRequestId);
+      const finalizeHash = await walletClient.writeContract({
+        address: VEIL_TOKEN_ADDRESS,
+        abi: CONFIDENTIAL_WRAPPER_ABI,
+        functionName: "finalizeUnwrap",
+        args: [unwrapRequestId, clearValue, decryptionProof]
+      });
+      showToast("Finalize Sent", "Waiting for USDC transfer confirmation...", finalizeHash);
+      const finalizeReceipt = await publicClient.waitForTransactionReceipt({ hash: finalizeHash });
+      if (finalizeReceipt.status === "success") {
+        if (availableBalance != null) {
+          setWalletBalance(availableBalance - parsedAmount);
+          setIsDecrypted(true);
+        }
+        showToast("Unwrap Complete", `${formatUnits(clearValue, TOKEN_DECIMALS)} cUSDC unwrapped to USDC.`, finalizeHash);
+      } else {
+        showToast("Finalize Reverted", "USDC release transaction reverted on Sepolia.", finalizeHash);
+      }
+    } catch (err) {
+      if (isUserRejectedRequest(err)) {
+        showToast("Unwrap Cancelled", "User rejected the wallet request.");
+      } else {
+        showToast("Unwrap Error", err.shortMessage || err.message || "cUSDC unwrap failed.");
+      }
+    }
+  };
+
   const handleClaim = async () => {
     if (!address || !walletClient || !publicClient || !IS_CONTRACT_CONFIGURED) {
       showToast("Wallet Required", "Connect wallet to claim prize payouts.");
@@ -968,6 +1099,7 @@ function AppContent({ activePage, navigatePage }) {
             onDecrypt={handleDecrypt}
             onFaucet={handleFaucet}
             onHideBalance={handleHideBalance}
+            onUnwrap={handleUnwrap}
             onWithdraw={handleWithdraw}
             pendingPrize={getDisplayBalance(pendingPrize)}
             pendingPrizeDraw={pendingPrizeDraw}

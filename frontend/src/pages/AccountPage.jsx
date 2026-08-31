@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { PageHeader } from "../components/common/PageHeader.jsx";
 import { VeilButton, ConnectWalletButton } from "../components/common/VeilButton.jsx";
 import { MetricCard, Panel } from "../components/common/Panel.jsx";
-import { ActionStack } from "../components/common/Inputs.jsx";
+import { ActionStack, LabelInput } from "../components/common/Inputs.jsx";
 
 export function AccountPage({
   isDecrypted,
@@ -13,9 +14,12 @@ export function AccountPage({
   onClaim,
   onFaucet,
   onHideBalance,
+  onUnwrap,
   onWithdraw,
   walletBalance
 }) {
+  const [unwrapAmount, setUnwrapAmount] = useState("1");
+
   return (
     <div>
       <PageHeader
@@ -70,6 +74,22 @@ export function AccountPage({
             </VeilButton>
             <VeilButton disabled={userDeposit <= 0} onClick={onWithdraw} variant="secondary">
               Withdraw Principal
+            </VeilButton>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 mt-6">
+            <LabelInput
+              label="Unwrap Amount"
+              onChange={(event) => setUnwrapAmount(event.target.value)}
+              placeholder="1"
+              value={unwrapAmount}
+            />
+            <VeilButton
+              className="self-end"
+              disabled={!isDecrypted || Number(unwrapAmount) <= 0}
+              onClick={() => onUnwrap(unwrapAmount)}
+              variant="secondary"
+            >
+              Unwrap cUSDC
             </VeilButton>
           </div>
         </Panel>
