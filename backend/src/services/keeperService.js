@@ -236,25 +236,27 @@ async function fundPrizeReserve({ clients, clubId, clubName }) {
 
   await ensureKeeperTokenOperator(clients);
 
+  const { encryptedAmount, inputProof } = await encryptYieldAmount({ amount, clients });
+
   await clients.publicClient.simulateContract({
     account: clients.account,
     address: VEIL_CLUBS_ADDRESS,
     abi: VEIL_CLUBS_KEEPER_ABI,
-    functionName: "accrueYieldPublic",
-    args: [BigInt(clubId), amount]
+    functionName: "accrueYield",
+    args: [BigInt(clubId), encryptedAmount, inputProof]
   });
 
   const hash = await clients.walletClient.writeContract({
     address: VEIL_CLUBS_ADDRESS,
     abi: VEIL_CLUBS_KEEPER_ABI,
-    functionName: "accrueYieldPublic",
-    args: [BigInt(clubId), amount]
+    functionName: "accrueYield",
+    args: [BigInt(clubId), encryptedAmount, inputProof]
   });
-  console.log(`[keeper] accrueYieldPublic(${clubId}, ${KEEPER_YIELD_AMOUNT} cUSDC) submitted: ${hash}`);
+  console.log(`[keeper] accrueYield(${clubId}, ${KEEPER_YIELD_AMOUNT} cUSDC) submitted: ${hash}`);
 
   const receipt = await clients.publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") {
-    console.warn(`[keeper] accrueYieldPublic(${clubId}) reverted: ${hash}`);
+    console.warn(`[keeper] accrueYield(${clubId}) reverted: ${hash}`);
     return false;
   }
   console.log(`[keeper] funded ${KEEPER_YIELD_AMOUNT} cUSDC prize reserve for ${clubName}: ${hash}`);

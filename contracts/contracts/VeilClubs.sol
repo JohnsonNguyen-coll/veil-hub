@@ -183,6 +183,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         }
 
         euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
+        FHE.allowThis(amount);
         FHE.allowTransient(amount, address(depositToken));
         euint64 received = depositToken.confidentialTransferFrom(msg.sender, address(this), amount);
 
