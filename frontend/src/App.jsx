@@ -497,7 +497,7 @@ function AppContent({ activePage, navigatePage }) {
 
       await ensureOperatorApproved(address);
       showToast("Encrypting Input", `Generating FHE proof for ${amountInput} cUSDC...`);
-      const { handle, inputProof } = await encryptUint64Input(VEIL_TOKEN_ADDRESS, address, parsedAmount);
+      const { handle, inputProof } = await encryptUint64Input(VEIL_CLUBS_ADDRESS, address, parsedAmount);
 
       showToast("Submitting Deposit", `Submitting encrypted deposit to ${poolName}...`);
       const hash = await walletClient.writeContract({
@@ -720,7 +720,7 @@ function AppContent({ activePage, navigatePage }) {
 
       await ensureOperatorApproved(address);
       showToast("Encrypting Yield", `Generating FHE proof for ${amountInput} cUSDC prize funding...`);
-      const { handle, inputProof } = await encryptUint64Input(VEIL_TOKEN_ADDRESS, address, parsedAmount);
+      const { handle, inputProof } = await encryptUint64Input(VEIL_CLUBS_ADDRESS, address, parsedAmount);
 
       showToast("Submitting Yield", `Funding encrypted prize reserve for ${poolName}...`);
       const hash = await walletClient.writeContract({

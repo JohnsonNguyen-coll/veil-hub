@@ -190,7 +190,7 @@ async function ensureKeeperTokenOperator(clients) {
 async function encryptYieldAmount({ amount, clients }) {
   const instance = await getFheInstance();
   const encryptedInput = await instance
-    .createEncryptedInput(VEIL_TOKEN_ADDRESS, clients.account.address)
+    .createEncryptedInput(VEIL_CLUBS_ADDRESS, clients.account.address)
     .add64(amount)
     .encrypt();
 
