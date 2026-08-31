@@ -247,6 +247,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         drawId = ++club.drawCount;
         prize = club.encryptedYield;
         club.encryptedYield = FHE.asEuint64(0);
+        _allowContractOnly(club.encryptedYield);
         club.nextDrawAt = uint64(block.timestamp + club.drawInterval);
         _drawTotalPrizes[clubId][drawId] = prize;
 
