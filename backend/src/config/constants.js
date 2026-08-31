@@ -25,6 +25,7 @@ export const KEEPER_YIELD_AMOUNT = process.env.KEEPER_YIELD_AMOUNT || "10";
 export const KEEPER_YIELD_MIN_MEMBERS = Number(process.env.KEEPER_YIELD_MIN_MEMBERS || 1);
 export const KEEPER_OPERATOR_APPROVAL_SECONDS = Number(process.env.KEEPER_OPERATOR_APPROVAL_SECONDS || 604800);
 export const KEEPER_RETRY_BACKOFF_MS = Number(process.env.KEEPER_RETRY_BACKOFF_MS || 300000);
+export const KEEPER_FUND_GAS_LIMIT = BigInt(process.env.KEEPER_FUND_GAS_LIMIT || 2500000);
 export const ZAMA_FHEVM_API_KEY = process.env.ZAMA_FHEVM_API_KEY || process.env.FHEVM_API_KEY || "";
 export const PUBLIC_DECRYPT_TIMEOUT_MS = Number(process.env.PUBLIC_DECRYPT_TIMEOUT_MS || 120000);
 export const FAUCET_COOLDOWN_MS = Number(process.env.FAUCET_COOLDOWN_MS || 86400000);

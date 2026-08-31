@@ -7,6 +7,7 @@ import {
   KEEPER_INTERVAL_MS,
   KEEPER_OPERATOR_APPROVAL_SECONDS,
   KEEPER_PRIVATE_KEY,
+  KEEPER_FUND_GAS_LIMIT,
   KEEPER_RETRY_BACKOFF_MS,
   KEEPER_YIELD_AMOUNT,
   KEEPER_YIELD_MIN_MEMBERS,
@@ -227,6 +228,9 @@ async function fundPrizeReserve({ clients, clubId, clubName }) {
   }
 
   const balance = await readKeeperTokenBalance(clients);
+  console.log(
+    `[keeper] auto-fund preflight for ${clubName}: keeper balance ${formatUnits(balance, TOKEN_DECIMALS)} cUSDC, funding ${KEEPER_YIELD_AMOUNT} cUSDC.`
+  );
   if (balance < amount) {
     console.warn(
       `[keeper] auto-fund skipped for ${clubName}: keeper has ${formatUnits(balance, TOKEN_DECIMALS)} cUSDC, needs ${KEEPER_YIELD_AMOUNT} cUSDC.`
@@ -238,19 +242,12 @@ async function fundPrizeReserve({ clients, clubId, clubName }) {
 
   const { encryptedAmount, inputProof } = await encryptYieldAmount({ amount, clients });
 
-  await clients.publicClient.simulateContract({
-    account: clients.account,
-    address: VEIL_CLUBS_ADDRESS,
-    abi: VEIL_CLUBS_KEEPER_ABI,
-    functionName: "accrueYield",
-    args: [BigInt(clubId), encryptedAmount, inputProof]
-  });
-
   const hash = await clients.walletClient.writeContract({
     address: VEIL_CLUBS_ADDRESS,
     abi: VEIL_CLUBS_KEEPER_ABI,
     functionName: "accrueYield",
-    args: [BigInt(clubId), encryptedAmount, inputProof]
+    args: [BigInt(clubId), encryptedAmount, inputProof],
+    gas: KEEPER_FUND_GAS_LIMIT
   });
   console.log(`[keeper] accrueYield(${clubId}, ${KEEPER_YIELD_AMOUNT} cUSDC) submitted: ${hash}`);
 
