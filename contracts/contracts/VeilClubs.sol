@@ -202,7 +202,8 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
             revert NotClubAdminOrKeeper(clubId, msg.sender);
         }
 
-        euint64 encryptedAmount = FHE.asEuint64(amount);
+        euint64 nonce = FHE.asEuint64(uint64(block.timestamp));
+        euint64 encryptedAmount = FHE.xor(FHE.xor(FHE.asEuint64(amount), nonce), nonce);
         FHE.allowTransient(encryptedAmount, address(depositToken));
         euint64 received = depositToken.confidentialTransferFrom(msg.sender, address(this), encryptedAmount);
 
