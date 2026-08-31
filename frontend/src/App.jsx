@@ -301,13 +301,19 @@ function formatCountdown(value, nowMs = Date.now()) {
   return `${String(minutes).padStart(2, "0")}M ${String(seconds).padStart(2, "0")}S`;
 }
 
-function formatDrawWindow(value, nowMs = Date.now()) {
+function hasMembers(memberCount) {
+  return Number(memberCount || 0) > 0;
+}
+
+function formatDrawWindow(value, nowMs = Date.now(), memberCount = 0) {
+  if (!hasMembers(memberCount)) return "AWAITING DEPOSIT";
   const timestampMs = getDrawTimestampMs(value);
   if (!timestampMs) return "--";
   return timestampMs <= nowMs ? "DRAW QUEUED" : formatCountdown(timestampMs, nowMs);
 }
 
-function isDrawDue(value, nowMs = Date.now()) {
+function isDrawDue(value, nowMs = Date.now(), memberCount = 0) {
+  if (!hasMembers(memberCount)) return false;
   const timestampMs = getDrawTimestampMs(value);
   return Boolean(timestampMs && timestampMs <= nowMs);
 }
@@ -470,20 +476,24 @@ function AppContent({ activePage, navigatePage }) {
     () =>
       poolsState.map((pool) => ({
         ...pool,
-        draw: formatDrawWindow(pool.nextDrawAt, nowMs),
-        drawDue: isDrawDue(pool.nextDrawAt, nowMs)
+        draw: formatDrawWindow(pool.nextDrawAt, nowMs, pool.members),
+        drawDue: isDrawDue(pool.nextDrawAt, nowMs, pool.members),
+        drawStatus: hasMembers(pool.members) ? (isDrawDue(pool.nextDrawAt, nowMs, pool.members) ? "AWAITING_KEEPER" : "KEEPER_WINDOW") : "NO_ONCHAIN_MEMBERS"
       })),
     [poolsState, nowMs]
   );
 
   const activePoolsCount = displayPools.filter((pool) => Number(pool.members || 0) > 0).length;
-  const drawTimestamps = displayPools.map((pool) => getDrawTimestampMs(pool.nextDrawAt)).filter(Boolean);
+  const drawTimestamps = displayPools
+    .filter((pool) => hasMembers(pool.members))
+    .map((pool) => getDrawTimestampMs(pool.nextDrawAt))
+    .filter(Boolean);
   const hasDueDraw = drawTimestamps.some((timestamp) => timestamp <= nowMs);
   const nextDrawAt = drawTimestamps
     .filter((timestamp) => timestamp >= nowMs)
     .sort((a, b) => a - b)[0];
-  const dashboardNextDraw = hasDueDraw ? "DRAW QUEUED" : formatCountdown(nextDrawAt, nowMs);
-  const dashboardNextDrawStatus = hasDueDraw ? "KEEPER_DUE" : "KEEPER_WINDOW";
+  const dashboardNextDraw = activePoolsCount === 0 ? "AWAITING DEPOSIT" : hasDueDraw ? "DRAW QUEUED" : formatCountdown(nextDrawAt, nowMs);
+  const dashboardNextDrawStatus = activePoolsCount === 0 ? "NO_ONCHAIN_MEMBERS" : hasDueDraw ? "KEEPER_DUE" : "KEEPER_WINDOW";
   const recentDraws = useMemo(
     () =>
       drawsState
@@ -1062,6 +1072,8 @@ function AppContent({ activePage, navigatePage }) {
             nextDraw={dashboardNextDraw}
             nextDrawStatus={dashboardNextDrawStatus}
             pools={displayPools}
+            pendingPrize={getDisplayBalance(pendingPrize)}
+            pendingPrizeDraw={pendingPrizeDraw}
             userDeposit={getDisplayBalance(userDeposit)}
             walletBalance={getDisplayBalance(walletBalance)}
           />

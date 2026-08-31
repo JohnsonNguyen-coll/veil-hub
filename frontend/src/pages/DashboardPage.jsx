@@ -3,6 +3,7 @@ import { VeilButton } from "../components/common/VeilButton.jsx";
 import { MetricCard, Panel } from "../components/common/Panel.jsx";
 import { PoolTable } from "../components/common/Tables.jsx";
 import { ActionStack } from "../components/common/Inputs.jsx";
+import { DRAW_QUEUED_HINT } from "../constants/options.js";
 
 export function DashboardPage({
   activePoolsCount,
@@ -15,8 +16,22 @@ export function DashboardPage({
   nextDrawStatus,
   onDecrypt,
   onFaucet,
+  pendingPrize,
+  pendingPrizeDraw,
   walletBalance
 }) {
+  const hasClaimablePrize = isDecrypted && !isClaimed && Number(pendingPrize || 0) > 0;
+  const claimableWinnings = isDecrypted ? `${isClaimed ? "0.00" : pendingPrize || "0.00"} cUSDC` : "••••••";
+  const claimableStatus = isDecrypted
+    ? isClaimed
+      ? "CLAIMED"
+      : hasClaimablePrize
+        ? "PRIZE_READY"
+        : pendingPrizeDraw
+          ? "DRAW_PENDING"
+          : "NO_PENDING_PRIZE"
+    : "EIP712_REQUIRED";
+
   return (
     <div>
       <PageHeader
@@ -24,14 +39,16 @@ export function DashboardPage({
         kicker="Private Terminal"
         title="Your Confidential Position"
         action={
-          <div className="flex flex-wrap gap-3">
-            <VeilButton onClick={onFaucet} variant="secondary">
-              Get Faucet
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full md:w-auto">
+            <VeilButton className="min-w-[150px]" onClick={() => navigatePage("global")}>
+              Deposit
             </VeilButton>
             <VeilButton onClick={onDecrypt} variant="secondary">
               {isDecrypted ? "Refresh Decrypt" : "Decrypt Balance"}
             </VeilButton>
-            <VeilButton onClick={() => navigatePage("global")}>Deposit</VeilButton>
+            <VeilButton onClick={onFaucet} variant="secondary">
+              Get Faucet
+            </VeilButton>
           </div>
         }
       />
@@ -43,16 +60,21 @@ export function DashboardPage({
         />
         <MetricCard
           label="Encrypted Principal"
-          value={isDecrypted ? `${userDeposit} USDC` : "••••••"}
+          value={isDecrypted ? `${userDeposit} cUSDC` : "••••••"}
           status={isDecrypted ? "DECRYPTED_OK" : "USER_DECRYPT_ONLY"}
         />
         <MetricCard
           label="Claimable Winnings"
-          value={isDecrypted ? (isClaimed ? "0.00 USDC" : "0.00 USDC") : "••••••"}
-          status={isDecrypted ? (isClaimed ? "CLAIMED" : "READY_TO_CLAIM") : "EIP712_REQUIRED"}
+          value={claimableWinnings}
+          status={claimableStatus}
         />
         <MetricCard label="Active Pools" value={String(activePoolsCount).padStart(2, "0")} status="ONCHAIN_MEMBERS" />
-        <MetricCard label="Next Draw" value={nextDraw || "--"} status={nextDrawStatus || "KEEPER_WINDOW"} />
+        <MetricCard
+          hint={nextDraw === "DRAW QUEUED" ? DRAW_QUEUED_HINT : null}
+          label="Next Draw"
+          value={nextDraw || "--"}
+          status={nextDrawStatus || "KEEPER_WINDOW"}
+        />
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 mt-8">
         <Panel title="Active Positions">

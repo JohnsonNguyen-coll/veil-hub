@@ -18,7 +18,7 @@ export function AccountPage({
   onWithdraw,
   walletBalance
 }) {
-  const [unwrapAmount, setUnwrapAmount] = useState("1");
+  const [unwrapAmount, setUnwrapAmount] = useState("");
 
   return (
     <div>
@@ -33,23 +33,23 @@ export function AccountPage({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border border-veil-gray-light">
             <MetricCard
               label="Wallet cUSDC"
-              value={isDecrypted ? `${walletBalance} USDC` : "••••••"}
+              value={isDecrypted ? `${walletBalance} cUSDC` : "••••••"}
               status={isDecrypted ? "DECRYPTED" : "CLICK_DECRYPT"}
             />
             <MetricCard
               label="Global Balance"
-              value={isDecrypted ? `${userDeposit} USDC` : "••••••"}
+              value={isDecrypted ? `${userDeposit} cUSDC` : "••••••"}
               status={isDecrypted ? "DECRYPTED" : "CLICK_DECRYPT"}
             />
             <MetricCard
               label="Club Balance"
-              value={isDecrypted ? "0.00 USDC" : "••••••"}
+              value={isDecrypted ? "0.00 cUSDC" : "••••••"}
               status={isDecrypted ? "DECRYPTED" : "CLICK_DECRYPT"}
             />
             <MetricCard
               label="Pending Prize"
-              value={isDecrypted ? `${pendingPrize} USDC` : "••••••"}
-              status={pendingPrizeDraw ? `DRAW_${pendingPrizeDraw.drawNumber}` : isClaimed ? "CLAIMED" : "NO_PENDING_PRIZE"}
+              value={isDecrypted ? `${pendingPrize} cUSDC` : "••••••"}
+              status={pendingPrizeDraw ? "READY_TO_CLAIM" : isClaimed ? "CLAIMED" : "NO_PENDING_PRIZE"}
             />
             <MetricCard
               label="Odds"
@@ -57,30 +57,32 @@ export function AccountPage({
               status="CONFIDENTIAL"
             />
           </div>
-          <div className="flex flex-wrap gap-3 mt-6">
-            <VeilButton onClick={onFaucet} variant="secondary">
-              Get Faucet 100 cUSDC
-            </VeilButton>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
             <VeilButton onClick={onDecrypt}>
               {isDecrypted ? "Re-decrypt Balance" : "Decrypt Balance"}
+            </VeilButton>
+            <VeilButton disabled={!pendingPrizeDraw || isClaimed} onClick={onClaim} variant="secondary">
+              {isClaimed ? "Prize Claimed" : pendingPrizeDraw ? "Claim Draw" : "No Prize To Claim"}
+            </VeilButton>
+            <VeilButton disabled={userDeposit <= 0} onClick={onWithdraw} variant="secondary">
+              Withdraw Principal
+            </VeilButton>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <VeilButton onClick={onFaucet} variant="secondary">
+              Get Faucet 100 cUSDC
             </VeilButton>
             {isDecrypted ? (
               <VeilButton onClick={onHideBalance} variant="secondary">
                 Hide Balance
               </VeilButton>
             ) : null}
-            <VeilButton disabled={!pendingPrizeDraw || isClaimed} onClick={onClaim} variant="secondary">
-              {isClaimed ? "Prize Claimed" : pendingPrizeDraw ? `Claim Draw #${pendingPrizeDraw.drawNumber}` : "No Prize To Claim"}
-            </VeilButton>
-            <VeilButton disabled={userDeposit <= 0} onClick={onWithdraw} variant="secondary">
-              Withdraw Principal
-            </VeilButton>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 mt-6">
             <LabelInput
               label="Unwrap Amount"
               onChange={(event) => setUnwrapAmount(event.target.value)}
-              placeholder="1"
+              placeholder="Enter amount"
               value={unwrapAmount}
             />
             <VeilButton

@@ -15,6 +15,9 @@ export const defaultPools = [
 
 export const defaultDrawHistory = [];
 
+export const DRAW_QUEUED_HINT =
+  "Draw time reached. Waiting for the keeper to fund prize and execute the onchain weighted draw. This usually takes around 1-2 minutes.";
+
 export const DRAW_FREQUENCY_OPTIONS = [
   { label: "2 minutes (test)", seconds: 120, milliseconds: 120_000 },
   { label: "Daily", seconds: 86_400, milliseconds: 86_400_000 },

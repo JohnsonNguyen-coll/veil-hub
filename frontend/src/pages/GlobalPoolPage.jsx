@@ -13,7 +13,7 @@ export function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposi
         title="Global No-Loss Pool"
         action={
           <div className="flex flex-wrap gap-3">
-            <VeilButton onClick={() => onDeposit(100, "Global Pool")}>Quick Deposit 100 USDC</VeilButton>
+            <VeilButton onClick={() => onDeposit(10, "Global Pool")}>Quick Deposit 10 cUSDC</VeilButton>
           </div>
         }
       />

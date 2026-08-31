@@ -1,3 +1,18 @@
+import { DRAW_QUEUED_HINT } from "../../constants/options.js";
+
+function DrawValue({ value }) {
+  if (value !== "DRAW QUEUED") return value;
+
+  return (
+    <span className="inline-flex items-center gap-2" title={DRAW_QUEUED_HINT}>
+      <span>{value}</span>
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-veil-purple text-[10px] leading-none text-veil-purple">
+        !
+      </span>
+    </span>
+  );
+}
+
 export function PoolTable({ rows }) {
   return (
     <div className="overflow-x-auto border border-veil-gray-light">
@@ -18,7 +33,9 @@ export function PoolTable({ rows }) {
               <td className="font-data-sm text-data-sm text-veil-white opacity-70 p-4 border-b border-veil-gray-light">{row.scope}</td>
               <td className="font-data-sm text-data-sm text-veil-white p-4 border-b border-veil-gray-light">{row.tvl}</td>
               <td className="font-data-sm text-data-sm text-veil-white p-4 border-b border-veil-gray-light">{row.members}</td>
-              <td className="font-data-sm text-data-sm text-veil-white p-4 border-b border-veil-gray-light">{row.draw}</td>
+              <td className="font-data-sm text-data-sm text-veil-white p-4 border-b border-veil-gray-light">
+                <DrawValue value={row.draw} />
+              </td>
               <td className="font-data-sm text-data-sm text-veil-white p-4 border-b border-veil-gray-light">&gt; {row.status}</td>
             </tr>
           ))}

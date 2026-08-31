@@ -2,15 +2,15 @@ import { useState } from "react";
 import { LabelInput, SelectInput } from "./Inputs.jsx";
 import { VeilButton } from "./VeilButton.jsx";
 import { MetricCard } from "./Panel.jsx";
-import { DRAW_FREQUENCY_OPTIONS, DIRECTORY_VISIBILITY_OPTIONS } from "../../constants/options.js";
+import { DRAW_FREQUENCY_OPTIONS, DIRECTORY_VISIBILITY_OPTIONS, DRAW_QUEUED_HINT } from "../../constants/options.js";
 
 export function TransactionForm({ isDecrypted, mode, onDecrypt, onHideBalance, onDeposit, walletBalance }) {
-  const [amount, setAmount] = useState("100.00");
+  const [amount, setAmount] = useState("");
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-start">
       <div>
-        <LabelInput label="Amount" onChange={(e) => setAmount(e.target.value)} placeholder="100.00" value={amount} />
+        <LabelInput label="Amount" onChange={(e) => setAmount(e.target.value)} placeholder="Enter amount" value={amount} />
         <div className="min-h-[20px] flex flex-wrap items-center gap-2 mt-2 ml-1">
           <p className="font-data-sm text-data-sm text-veil-purple">
             Balance: {isDecrypted && walletBalance != null ? `${walletBalance} cUSDC` : "hidden"}
@@ -64,11 +64,16 @@ export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDepo
       <div className="grid grid-cols-2 gap-0 border border-veil-gray-light">
         <MetricCard label="Encrypted TVL" value={club.tvl || "encrypted"} status="HIDDEN" />
         <MetricCard label="Members" value={club.members || "0"} status="MAY_HIDE" />
-        <MetricCard label="Draw Cooldown" value={club.draw || "--"} status={club.drawDue ? "AWAITING_KEEPER" : "KEEPER_WINDOW"} />
+        <MetricCard
+          hint={club.draw === "DRAW QUEUED" ? DRAW_QUEUED_HINT : null}
+          label="Draw Cooldown"
+          value={club.draw || "--"}
+          status={club.drawStatus || (club.drawDue ? "AWAITING_KEEPER" : "KEEPER_WINDOW")}
+        />
         <MetricCard label="Prize" value={club.prize || "•••••• USDC"} status="PRIVATE" />
       </div>
       <div className="flex flex-wrap gap-3">
-        <VeilButton onClick={() => onDeposit(50)}>Quick Deposit 50</VeilButton>
+        <VeilButton onClick={() => onDeposit(10)}>Quick Deposit 10 cUSDC</VeilButton>
         <VeilButton onClick={isDecrypted ? onHideBalance : onDecrypt} variant="secondary">
           {isDecrypted ? `Hide Balance ${walletBalance} cUSDC` : "Decrypt Balance"}
         </VeilButton>
