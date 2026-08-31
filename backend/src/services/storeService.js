@@ -8,7 +8,12 @@ let supabaseDisabled = false;
 
 function isRecoverableSupabaseSchemaError(error) {
   const message = String(error?.message || "");
-  return message.includes("schema cache") || message.includes("column") || message.includes("relationship");
+  return (
+    message.includes("schema cache") ||
+    message.includes("column") ||
+    message.includes("relationship") ||
+    message.includes("foreign key constraint")
+  );
 }
 
 export async function ensureStore() {

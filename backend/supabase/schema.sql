@@ -39,7 +39,7 @@ alter table public.veil_clubs add column if not exists updated_at timestamptz no
 create table if not exists public.veil_draws (
   id text primary key,
   draw_number integer not null,
-  club_id text not null references public.veil_clubs(id) on delete cascade,
+  club_id text not null,
   club_name text not null,
   winner text not null,
   prize_handle text not null,
@@ -48,6 +48,8 @@ create table if not exists public.veil_draws (
   source text not null,
   created_at timestamptz not null default now()
 );
+
+alter table public.veil_draws drop constraint if exists veil_draws_club_id_fkey;
 
 create table if not exists public.veil_faucet_claims (
   address text primary key,

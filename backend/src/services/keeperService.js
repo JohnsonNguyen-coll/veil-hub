@@ -303,7 +303,29 @@ export async function syncKeeperDraw({ clubId, clubName, txHash, receipt, public
   });
 
   await updateStore((store) => {
-    const club = store.clubs.find((item) => String(item.contractClubId ?? (item.id === "global" ? "0" : "")) === String(clubId));
+    let club = store.clubs.find((item) => String(item.contractClubId ?? (item.id === "global" ? "0" : "")) === String(clubId));
+    if (!club && String(clubId) === "0") {
+      club = {
+        id: "global",
+        contractClubId: "0",
+        name: "Global Pool",
+        description: "Public confidential no-loss prize pool.",
+        scope: "PUBLIC",
+        admin: clubView.admin || "protocol",
+        keeper: clubView.keeper || "protocol",
+        inviteCode: null,
+        minDeposit: String(clubView.minDeposit || 1),
+        drawIntervalMs: Number(clubView.drawInterval || 86400) * 1000,
+        nextDrawAt: new Date(Number(clubView.nextDrawAt || 0) * 1000).toISOString(),
+        anonymousMembers: Boolean(clubView.anonymousMembers),
+        memberCount: Number(clubView.memberCount || memberCount || 0),
+        encryptedTvlHandle: "encrypted",
+        encryptedPrizeHandle: "encrypted",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString()
+      };
+      store.clubs.push(club);
+    }
     if (club) {
       club.memberCount = Number(clubView.memberCount || memberCount || club.memberCount || 0);
       club.nextDrawAt = new Date(Number(clubView.nextDrawAt || 0) * 1000).toISOString();
@@ -416,8 +438,12 @@ export async function runKeeperTick(clients) {
         continue;
       }
 
-      await syncKeeperDraw({ clubId, clubName, txHash, receipt, publicClient: clients.publicClient });
       localDrawCooldownUntil.set(String(clubId), now + Number(clubView.drawInterval || 0));
+      try {
+        await syncKeeperDraw({ clubId, clubName, txHash, receipt, publicClient: clients.publicClient });
+      } catch (error) {
+        console.warn(`[keeper] draw synced onchain but local store sync failed: ${errorMessage(error) || "unknown error"}`);
+      }
       console.log(`[keeper] triggerWeightedDraw(${clubId}) confirmed: ${txHash}`);
     }
   } catch (error) {
