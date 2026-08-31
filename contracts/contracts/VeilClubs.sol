@@ -92,6 +92,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     error PrizeAlreadyClaimed(uint256 clubId, uint256 drawId, address member);
     error WeightedDrawRequiresPublicTotal();
     error InvalidTotalPrincipal(uint64 totalPrincipal);
+    error InvalidYieldAmount();
 
     constructor(IERC7984 token, address owner, uint64 globalDrawInterval) Ownable(owner) {
         if (globalDrawInterval == 0) revert InvalidDrawInterval();
@@ -184,6 +185,26 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
         FHE.allowTransient(amount, address(depositToken));
         euint64 received = depositToken.confidentialTransferFrom(msg.sender, address(this), amount);
+
+        club.encryptedYield = FHE.add(club.encryptedYield, received);
+        _allowContractOnly(club.encryptedYield);
+
+        emit YieldAccrued(clubId, msg.sender, received);
+    }
+
+    /// @notice Funds the prize reserve with a public mock-yield amount.
+    /// @dev This is intended for Sepolia keeper automation; user deposits and winnings remain encrypted.
+    function accrueYieldPublic(uint256 clubId, uint64 amount) external {
+        if (amount == 0) revert InvalidYieldAmount();
+
+        Club storage club = _requireClub(clubId);
+        if (msg.sender != club.admin && msg.sender != club.keeper && msg.sender != owner()) {
+            revert NotClubAdminOrKeeper(clubId, msg.sender);
+        }
+
+        euint64 encryptedAmount = FHE.asEuint64(amount);
+        FHE.allowTransient(encryptedAmount, address(depositToken));
+        euint64 received = depositToken.confidentialTransferFrom(msg.sender, address(this), encryptedAmount);
 
         club.encryptedYield = FHE.add(club.encryptedYield, received);
         _allowContractOnly(club.encryptedYield);

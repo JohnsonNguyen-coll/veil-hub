@@ -724,14 +724,12 @@ function AppContent({ activePage, navigatePage }) {
       }
 
       await ensureOperatorApproved(address);
-      showToast("Encrypting Yield", `Generating FHE proof for ${amountInput} cUSDC prize funding...`);
-      const { handle, inputProof } = await encryptUint64Input(VEIL_CLUBS_ADDRESS, address, parsedAmount);
 
       showToast("Submitting Yield", `Funding encrypted prize reserve for ${poolName}...`);
       const hash = await walletClient.writeContract({
         ...clubContract,
-        functionName: "accrueYield",
-        args: [BigInt(clubId), handle, inputProof]
+        functionName: "accrueYieldPublic",
+        args: [BigInt(clubId), parsedAmount]
       });
 
       showToast("Transaction Sent", "Waiting for yield funding confirmation...", hash);

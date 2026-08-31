@@ -101,6 +101,16 @@ export const VEIL_CLUBS_KEEPER_ABI = [
   },
   {
     type: "function",
+    name: "accrueYieldPublic",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "clubId", type: "uint256" },
+      { name: "amount", type: "uint64" }
+    ],
+    outputs: []
+  },
+  {
+    type: "function",
     name: "prepareWeightedDraw",
     stateMutability: "nonpayable",
     inputs: [{ name: "clubId", type: "uint256" }],
