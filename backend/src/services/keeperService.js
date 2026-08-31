@@ -27,6 +27,7 @@ import { readStore, updateStore } from "./storeService.js";
 let keeperRunning = false;
 let fheInstancePromise = null;
 let fheRpcIndex = 0;
+const localDrawCooldownUntil = new Map();
 
 function sameAddress(left, right) {
   return String(left || "").toLowerCase() === String(right || "").toLowerCase();
@@ -52,6 +53,21 @@ function isRetryableRpcError(error) {
     message.includes("fetch") ||
     message.includes("failed to fetch")
   );
+}
+
+function errorMessage(error) {
+  const details = [
+    error?.shortMessage,
+    error?.cause?.shortMessage,
+    error?.details,
+    error?.cause?.details,
+    error?.message,
+    error?.cause?.message
+  ]
+    .filter(Boolean)
+    .join(" | ");
+  const signature = error?.data?.errorName || error?.data?.signature || error?.cause?.data?.signature;
+  return signature ? `${details} | selector=${signature}` : details;
 }
 
 async function getFheInstance() {
@@ -332,9 +348,11 @@ export async function runKeeperTick(clients) {
       });
 
       const memberCount = Number(clubView.memberCount || 0);
+      const localCooldown = localDrawCooldownUntil.get(String(clubId)) || 0;
       if (!clubView.exists) continue;
       if (!sameAddress(clients.account.address, clubView.keeper) && !sameAddress(clients.account.address, clubView.admin)) continue;
       if (memberCount === 0) continue;
+      if (localCooldown > now) continue;
       if (Number(clubView.nextDrawAt || 0) > now) continue;
       if (KEEPER_AUTO_FUND_YIELD && memberCount < KEEPER_YIELD_MIN_MEMBERS) continue;
 
@@ -399,10 +417,11 @@ export async function runKeeperTick(clients) {
       }
 
       await syncKeeperDraw({ clubId, clubName, txHash, receipt, publicClient: clients.publicClient });
+      localDrawCooldownUntil.set(String(clubId), now + Number(clubView.drawInterval || 0));
       console.log(`[keeper] triggerWeightedDraw(${clubId}) confirmed: ${txHash}`);
     }
   } catch (error) {
-    console.warn(`[keeper] tick failed: ${error.shortMessage || error.message}`);
+    console.warn(`[keeper] tick failed: ${errorMessage(error) || "unknown error"}`);
   } finally {
     keeperRunning = false;
   }

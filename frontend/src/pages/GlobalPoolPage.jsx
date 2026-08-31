@@ -4,7 +4,7 @@ import { MetricCard, Panel } from "../components/common/Panel.jsx";
 import { TransactionForm } from "../components/common/FormsAndDetails.jsx";
 import { DrawEngine } from "../components/common/Inputs.jsx";
 
-export function GlobalPoolPage({ isDecrypted, onDecrypt, onFundYield, onHideBalance, onDeposit, pool, walletBalance }) {
+export function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposit, pool, walletBalance }) {
   return (
     <div>
       <PageHeader
@@ -14,9 +14,6 @@ export function GlobalPoolPage({ isDecrypted, onDecrypt, onFundYield, onHideBala
         action={
           <div className="flex flex-wrap gap-3">
             <VeilButton onClick={() => onDeposit(100, "Global Pool")}>Quick Deposit 100 USDC</VeilButton>
-            <VeilButton onClick={() => onFundYield("10", "Global Pool")} variant="secondary">
-              Fund Prize 10 cUSDC
-            </VeilButton>
           </div>
         }
       />

@@ -46,7 +46,7 @@ export function TransactionForm({ isDecrypted, mode, onDecrypt, onHideBalance, o
   );
 }
 
-export function ClubDetail({ club, isDecrypted, onDecrypt, onFundYield, onHideBalance, onDeposit, walletBalance }) {
+export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, walletBalance }) {
   if (!club) {
     return (
       <div className="p-6 border border-veil-gray-light bg-veil-gray-dark text-veil-white opacity-70 font-data-sm">
@@ -64,14 +64,11 @@ export function ClubDetail({ club, isDecrypted, onDecrypt, onFundYield, onHideBa
       <div className="grid grid-cols-2 gap-0 border border-veil-gray-light">
         <MetricCard label="Encrypted TVL" value={club.tvl || "encrypted"} status="HIDDEN" />
         <MetricCard label="Members" value={club.members || "0"} status="MAY_HIDE" />
-        <MetricCard label="Draw Cooldown" value={club.draw || "--"} status={club.draw === "READY" ? "KEEPER_READY" : "KEEPER_WINDOW"} />
+        <MetricCard label="Draw Cooldown" value={club.draw || "--"} status={club.drawDue ? "AWAITING_KEEPER" : "KEEPER_WINDOW"} />
         <MetricCard label="Prize" value={club.prize || "•••••• USDC"} status="PRIVATE" />
       </div>
       <div className="flex flex-wrap gap-3">
         <VeilButton onClick={() => onDeposit(50)}>Quick Deposit 50</VeilButton>
-        <VeilButton onClick={() => onFundYield("10")} variant="secondary">
-          Fund Prize 10
-        </VeilButton>
         <VeilButton onClick={isDecrypted ? onHideBalance : onDecrypt} variant="secondary">
           {isDecrypted ? `Hide Balance ${walletBalance} cUSDC` : "Decrypt Balance"}
         </VeilButton>

@@ -12,6 +12,7 @@ export function DashboardPage({
   isDecrypted,
   isClaimed,
   userDeposit,
+  nextDrawStatus,
   onDecrypt,
   onFaucet,
   walletBalance
@@ -51,7 +52,7 @@ export function DashboardPage({
           status={isDecrypted ? (isClaimed ? "CLAIMED" : "READY_TO_CLAIM") : "EIP712_REQUIRED"}
         />
         <MetricCard label="Active Pools" value={String(activePoolsCount).padStart(2, "0")} status="ONCHAIN_MEMBERS" />
-        <MetricCard label="Next Draw" value={nextDraw || "--"} status={nextDraw === "READY" ? "KEEPER_READY" : "KEEPER_WINDOW"} />
+        <MetricCard label="Next Draw" value={nextDraw || "--"} status={nextDrawStatus || "KEEPER_WINDOW"} />
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 mt-8">
         <Panel title="Active Positions">

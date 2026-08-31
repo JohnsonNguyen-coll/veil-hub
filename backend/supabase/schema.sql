@@ -20,6 +20,22 @@ create table if not exists public.veil_clubs (
   updated_at timestamptz not null default now()
 );
 
+alter table public.veil_clubs add column if not exists contract_club_id text;
+alter table public.veil_clubs add column if not exists create_tx_hash text;
+alter table public.veil_clubs add column if not exists description text not null default '';
+alter table public.veil_clubs add column if not exists admin text not null default 'protocol';
+alter table public.veil_clubs add column if not exists keeper text not null default 'protocol';
+alter table public.veil_clubs add column if not exists invite_code text;
+alter table public.veil_clubs add column if not exists min_deposit text not null default '1';
+alter table public.veil_clubs add column if not exists draw_interval_ms bigint not null default 86400000;
+alter table public.veil_clubs add column if not exists next_draw_at timestamptz not null default now();
+alter table public.veil_clubs add column if not exists anonymous_members boolean not null default false;
+alter table public.veil_clubs add column if not exists member_count integer not null default 0;
+alter table public.veil_clubs add column if not exists encrypted_tvl_handle text not null default 'encrypted';
+alter table public.veil_clubs add column if not exists encrypted_prize_handle text not null default 'encrypted';
+alter table public.veil_clubs add column if not exists status text not null default 'ACTIVE';
+alter table public.veil_clubs add column if not exists updated_at timestamptz not null default now();
+
 create table if not exists public.veil_draws (
   id text primary key,
   draw_number integer not null,

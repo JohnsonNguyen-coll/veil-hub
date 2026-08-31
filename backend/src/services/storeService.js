@@ -4,6 +4,12 @@ import { dataDir, dataFile, seedFile, supabase } from "../config/constants.js";
 
 let writeQueue = Promise.resolve();
 let memoryStore = null;
+let supabaseDisabled = false;
+
+function isRecoverableSupabaseSchemaError(error) {
+  const message = String(error?.message || "");
+  return message.includes("schema cache") || message.includes("column") || message.includes("relationship");
+}
 
 export async function ensureStore() {
   await mkdir(dataDir, { recursive: true });
@@ -23,11 +29,12 @@ export async function ensureStore() {
 }
 
 export async function readStore() {
-  if (supabase) {
+  if (supabase && !supabaseDisabled) {
     try {
       return await readSupabaseStore();
     } catch (error) {
       console.warn(`[store] Supabase read failed; using fallback storage: ${error.message}`);
+      if (isRecoverableSupabaseSchemaError(error)) supabaseDisabled = true;
     }
   }
 
@@ -48,12 +55,16 @@ export async function readStore() {
 }
 
 export async function writeStore(nextStore) {
-  if (supabase) {
+  if (supabase && !supabaseDisabled) {
     try {
       await writeSupabaseStore(nextStore);
       return;
     } catch (error) {
       console.warn(`[store] Supabase write failed; using fallback storage: ${error.message}`);
+      if (isRecoverableSupabaseSchemaError(error)) {
+        supabaseDisabled = true;
+        console.warn("[store] Supabase disabled for this process; run backend/supabase/schema.sql to update the database schema.");
+      }
     }
   }
 

@@ -248,7 +248,7 @@ function formatCountdown(value, nowMs = Date.now()) {
   const timestampMs = getDrawTimestampMs(value);
   if (!timestampMs) return "--";
   const remaining = Math.max(0, Math.floor((timestampMs - nowMs) / 1000));
-  if (remaining <= 0) return "READY";
+  if (remaining <= 0) return "00M 00S";
   const days = Math.floor(remaining / 86400);
   const hours = Math.floor((remaining % 86400) / 3600);
   const minutes = Math.floor((remaining % 3600) / 60);
@@ -256,6 +256,11 @@ function formatCountdown(value, nowMs = Date.now()) {
   if (days > 0) return `${days}D ${String(hours).padStart(2, "0")}H`;
   if (hours > 0) return `${String(hours).padStart(2, "0")}H ${String(minutes).padStart(2, "0")}M`;
   return `${String(minutes).padStart(2, "0")}M ${String(seconds).padStart(2, "0")}S`;
+}
+
+function isDrawDue(value, nowMs = Date.now()) {
+  const timestampMs = getDrawTimestampMs(value);
+  return Boolean(timestampMs && timestampMs <= nowMs);
 }
 
 function poolFromClub(club) {
@@ -416,18 +421,20 @@ function AppContent({ activePage, navigatePage }) {
     () =>
       poolsState.map((pool) => ({
         ...pool,
-        draw: formatCountdown(pool.nextDrawAt, nowMs)
+        draw: formatCountdown(pool.nextDrawAt, nowMs),
+        drawDue: isDrawDue(pool.nextDrawAt, nowMs)
       })),
     [poolsState, nowMs]
   );
 
   const activePoolsCount = displayPools.filter((pool) => Number(pool.members || 0) > 0).length;
   const drawTimestamps = displayPools.map((pool) => getDrawTimestampMs(pool.nextDrawAt)).filter(Boolean);
-  const hasReadyDraw = drawTimestamps.some((timestamp) => timestamp <= nowMs);
+  const hasDueDraw = drawTimestamps.some((timestamp) => timestamp <= nowMs);
   const nextDrawAt = drawTimestamps
     .filter((timestamp) => timestamp >= nowMs)
     .sort((a, b) => a - b)[0];
-  const dashboardNextDraw = hasReadyDraw ? "READY" : formatCountdown(nextDrawAt, nowMs);
+  const dashboardNextDraw = hasDueDraw ? "00M 00S" : formatCountdown(nextDrawAt, nowMs);
+  const dashboardNextDrawStatus = hasDueDraw ? "AWAITING_KEEPER" : "KEEPER_WINDOW";
   const recentDraws = useMemo(
     () =>
       drawsState
@@ -919,6 +926,7 @@ function AppContent({ activePage, navigatePage }) {
             onFaucet={handleFaucet}
             activePoolsCount={activePoolsCount}
             nextDraw={dashboardNextDraw}
+            nextDrawStatus={dashboardNextDrawStatus}
             pools={displayPools}
             userDeposit={getDisplayBalance(userDeposit)}
             walletBalance={getDisplayBalance(walletBalance)}
@@ -929,7 +937,6 @@ function AppContent({ activePage, navigatePage }) {
             isDecrypted={isDecrypted}
             onDecrypt={handleDecrypt}
             onDeposit={handleDeposit}
-            onFundYield={handleFundYield}
             onHideBalance={handleHideBalance}
             pool={displayPools.find((pool) => pool.id === "global" || String(pool.contractId) === "0") || defaultPools[0]}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
@@ -942,7 +949,6 @@ function AppContent({ activePage, navigatePage }) {
             onCreateClub={handleCreateClub}
             onDecrypt={handleDecrypt}
             onDeposit={handleDeposit}
-            onFundYield={handleFundYield}
             onHideBalance={handleHideBalance}
             onJoinClub={handleJoinClub}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
