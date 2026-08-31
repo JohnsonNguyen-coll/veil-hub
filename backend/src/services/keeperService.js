@@ -229,7 +229,7 @@ async function fundPrizeReserve({ clients, clubId, clubName }) {
 
   const balance = await readKeeperTokenBalance(clients);
   console.log(
-    `[keeper] auto-fund preflight for ${clubName}: keeper balance ${formatUnits(balance, TOKEN_DECIMALS)} cUSDC, funding ${KEEPER_YIELD_AMOUNT} cUSDC.`
+    `[keeper] auto-fund preflight for ${clubName}: keeper balance ${formatUnits(balance, TOKEN_DECIMALS)} cUSDC, funding ${KEEPER_YIELD_AMOUNT} cUSDC, gas limit ${KEEPER_FUND_GAS_LIMIT}.`
   );
   if (balance < amount) {
     console.warn(
