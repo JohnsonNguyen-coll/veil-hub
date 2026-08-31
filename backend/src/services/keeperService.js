@@ -7,6 +7,7 @@ import {
   KEEPER_INTERVAL_MS,
   KEEPER_OPERATOR_APPROVAL_SECONDS,
   KEEPER_PRIVATE_KEY,
+  KEEPER_RETRY_BACKOFF_MS,
   KEEPER_YIELD_AMOUNT,
   KEEPER_YIELD_MIN_MEMBERS,
   MAX_EUINT64,
@@ -28,6 +29,14 @@ let keeperRunning = false;
 let fheInstancePromise = null;
 let fheRpcIndex = 0;
 const localDrawCooldownUntil = new Map();
+
+function backoffSeconds() {
+  return Math.max(1, Math.ceil(KEEPER_RETRY_BACKOFF_MS / 1000));
+}
+
+function setKeeperBackoff(clubId, now) {
+  localDrawCooldownUntil.set(String(clubId), now + backoffSeconds());
+}
 
 function sameAddress(left, right) {
   return String(left || "").toLowerCase() === String(right || "").toLowerCase();
@@ -378,8 +387,20 @@ export async function runKeeperTick(clients) {
       if (Number(clubView.nextDrawAt || 0) > now) continue;
       if (KEEPER_AUTO_FUND_YIELD && memberCount < KEEPER_YIELD_MIN_MEMBERS) continue;
 
-      const funded = await fundPrizeReserve({ clients, clubId, clubName });
-      if (!funded) continue;
+      let funded = false;
+      try {
+        funded = await fundPrizeReserve({ clients, clubId, clubName });
+      } catch (error) {
+        setKeeperBackoff(clubId, now);
+        console.warn(
+          `[keeper] auto-fund failed for ${clubName}; backing off ${backoffSeconds()}s: ${errorMessage(error) || "unknown error"}`
+        );
+        continue;
+      }
+      if (!funded) {
+        setKeeperBackoff(clubId, now);
+        continue;
+      }
 
       await clients.publicClient.simulateContract({
         account: clients.account,
@@ -410,7 +431,21 @@ export async function runKeeperTick(clients) {
         continue;
       }
 
-      const { totalPrincipal, decryptionProof } = await publicDecryptTotalPrincipal(totalPrincipalHandle);
+      let totalPrincipal;
+      let decryptionProof;
+      try {
+        const result = await publicDecryptTotalPrincipal(totalPrincipalHandle);
+        totalPrincipal = result.totalPrincipal;
+        decryptionProof = result.decryptionProof;
+      } catch (error) {
+        setKeeperBackoff(clubId, now);
+        console.warn(
+          `[keeper] public decrypt failed for ${clubName}; backing off ${backoffSeconds()}s: ${
+            errorMessage(error) || "unknown error"
+          }`
+        );
+        continue;
+      }
       if (totalPrincipal === 0n) {
         console.warn(`[keeper] weighted draw skipped for ${clubId}: decrypted total principal is zero`);
         continue;
