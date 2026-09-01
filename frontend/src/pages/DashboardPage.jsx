@@ -3,7 +3,7 @@ import { VeilButton } from "../components/common/VeilButton.jsx";
 import { MetricCard, Panel } from "../components/common/Panel.jsx";
 import { PoolTable } from "../components/common/Tables.jsx";
 import { ActionStack } from "../components/common/Inputs.jsx";
-import { DRAW_QUEUED_HINT } from "../constants/options.js";
+import { AWAITING_PRIZE_HINT, DRAW_QUEUED_HINT } from "../constants/options.js";
 
 export function DashboardPage({
   activePoolsCount,
@@ -70,7 +70,7 @@ export function DashboardPage({
         />
         <MetricCard label="Active Pools" value={String(activePoolsCount).padStart(2, "0")} status="ONCHAIN_MEMBERS" />
         <MetricCard
-          hint={nextDraw === "DRAW QUEUED" ? DRAW_QUEUED_HINT : null}
+          hint={nextDraw === "DRAW QUEUED" ? DRAW_QUEUED_HINT : nextDraw === "AWAITING PRIZE" ? AWAITING_PRIZE_HINT : null}
           label="Next Draw"
           value={nextDraw || "--"}
           status={nextDrawStatus || "KEEPER_WINDOW"}

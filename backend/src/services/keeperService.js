@@ -323,11 +323,12 @@ export async function syncKeeperDraw({ clubId, clubName, txHash, receipt, public
         inviteCode: null,
         minDeposit: String(clubView.minDeposit || 1),
         drawIntervalMs: Number(clubView.drawInterval || 86400) * 1000,
-        nextDrawAt: new Date(Number(clubView.nextDrawAt || 0) * 1000).toISOString(),
+        nextDrawAt: clubView.nextDrawAt ? new Date(Number(clubView.nextDrawAt) * 1000).toISOString() : null,
         anonymousMembers: Boolean(clubView.anonymousMembers),
         memberCount: Number(clubView.memberCount || memberCount || 0),
         encryptedTvlHandle: "encrypted",
         encryptedPrizeHandle: "encrypted",
+        hasPrizeReserve: Boolean(clubView.hasPrizeReserve),
         status: "ACTIVE",
         createdAt: new Date().toISOString()
       };
@@ -335,8 +336,9 @@ export async function syncKeeperDraw({ clubId, clubName, txHash, receipt, public
     }
     if (club) {
       club.memberCount = Number(clubView.memberCount || memberCount || club.memberCount || 0);
-      club.nextDrawAt = new Date(Number(clubView.nextDrawAt || 0) * 1000).toISOString();
+      club.nextDrawAt = clubView.nextDrawAt ? new Date(Number(clubView.nextDrawAt) * 1000).toISOString() : null;
       club.encryptedPrizeHandle = "encrypted";
+      club.hasPrizeReserve = Boolean(clubView.hasPrizeReserve);
       club.status = "ACTIVE";
     }
 
@@ -381,24 +383,27 @@ export async function runKeeperTick(clients) {
       if (!clubView.exists) continue;
       if (!sameAddress(clients.account.address, clubView.keeper) && !sameAddress(clients.account.address, clubView.admin)) continue;
       if (memberCount === 0) continue;
-      if (localCooldown > now) continue;
-      if (Number(clubView.nextDrawAt || 0) > now) continue;
       if (KEEPER_AUTO_FUND_YIELD && memberCount < KEEPER_YIELD_MIN_MEMBERS) continue;
 
-      let funded = false;
-      try {
-        funded = await fundPrizeReserve({ clients, clubId, clubName });
-      } catch (error) {
-        setKeeperBackoff(clubId, now);
-        console.warn(
-          `[keeper] auto-fund failed for ${clubName}; backing off ${backoffSeconds()}s: ${errorMessage(error) || "unknown error"}`
-        );
+      if (!clubView.hasPrizeReserve) {
+        let funded = false;
+        try {
+          funded = await fundPrizeReserve({ clients, clubId, clubName });
+        } catch (error) {
+          setKeeperBackoff(clubId, now);
+          console.warn(
+            `[keeper] auto-fund failed for ${clubName}; backing off ${backoffSeconds()}s: ${errorMessage(error) || "unknown error"}`
+          );
+          continue;
+        }
+        if (!funded) {
+          setKeeperBackoff(clubId, now);
+        }
         continue;
       }
-      if (!funded) {
-        setKeeperBackoff(clubId, now);
-        continue;
-      }
+
+      if (localCooldown > now) continue;
+      if (Number(clubView.nextDrawAt || 0) > now) continue;
 
       await clients.publicClient.simulateContract({
         account: clients.account,

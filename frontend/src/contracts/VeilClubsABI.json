@@ -173,6 +173,17 @@
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "clubId",
+        "type": "uint256"
+      }
+    ],
+    "name": "PrizeReserveNotFunded",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "bytes32",
         "name": "handle",
         "type": "bytes32"
@@ -643,6 +654,11 @@
             "internalType": "uint256",
             "name": "drawCount",
             "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "hasPrizeReserve",
+            "type": "bool"
           },
           {
             "internalType": "bool",

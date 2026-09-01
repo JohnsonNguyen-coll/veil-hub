@@ -83,6 +83,7 @@ export const VEIL_CLUBS_KEEPER_ABI = [
           { name: "nextDrawAt", type: "uint64" },
           { name: "memberCount", type: "uint256" },
           { name: "drawCount", type: "uint256" },
+          { name: "hasPrizeReserve", type: "bool" },
           { name: "anonymousMembers", type: "bool" },
           { name: "exists", type: "bool" }
         ]

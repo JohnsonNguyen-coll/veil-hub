@@ -7,6 +7,7 @@ export const defaultPools = [
     tvl: "encrypted",
     members: "0",
     nextDrawAt: null,
+    hasPrizeReserve: false,
     draw: "--",
     prize: "•••••• USDC",
     status: "ACTIVE"
@@ -17,6 +18,9 @@ export const defaultDrawHistory = [];
 
 export const DRAW_QUEUED_HINT =
   "Draw time reached. Waiting for the keeper to fund prize and execute the onchain weighted draw. This usually takes around 1-2 minutes.";
+
+export const AWAITING_PRIZE_HINT =
+  "Pool has members, but the keeper has not funded the encrypted prize reserve yet. This usually takes around 1-2 minutes.";
 
 export const DRAW_FREQUENCY_OPTIONS = [
   { label: "2 minutes (test)", seconds: 120, milliseconds: 120_000 },

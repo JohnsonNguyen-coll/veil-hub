@@ -2,7 +2,7 @@ import { useState } from "react";
 import { LabelInput, SelectInput } from "./Inputs.jsx";
 import { VeilButton } from "./VeilButton.jsx";
 import { MetricCard } from "./Panel.jsx";
-import { DRAW_FREQUENCY_OPTIONS, DIRECTORY_VISIBILITY_OPTIONS, DRAW_QUEUED_HINT } from "../../constants/options.js";
+import { AWAITING_PRIZE_HINT, DRAW_FREQUENCY_OPTIONS, DIRECTORY_VISIBILITY_OPTIONS, DRAW_QUEUED_HINT } from "../../constants/options.js";
 
 export function TransactionForm({ isDecrypted, mode, onDecrypt, onHideBalance, onDeposit, walletBalance }) {
   const [amount, setAmount] = useState("");
@@ -65,7 +65,7 @@ export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDepo
         <MetricCard label="Encrypted TVL" value={club.tvl || "encrypted"} status="HIDDEN" />
         <MetricCard label="Members" value={club.members || "0"} status="MAY_HIDE" />
         <MetricCard
-          hint={club.draw === "DRAW QUEUED" ? DRAW_QUEUED_HINT : null}
+          hint={club.draw === "DRAW QUEUED" ? DRAW_QUEUED_HINT : club.draw === "AWAITING PRIZE" ? AWAITING_PRIZE_HINT : null}
           label="Draw Cooldown"
           value={club.draw || "--"}
           status={club.drawStatus || (club.drawDue ? "AWAITING_KEEPER" : "KEEPER_WINDOW")}

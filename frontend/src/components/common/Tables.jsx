@@ -1,10 +1,11 @@
-import { DRAW_QUEUED_HINT } from "../../constants/options.js";
+import { AWAITING_PRIZE_HINT, DRAW_QUEUED_HINT } from "../../constants/options.js";
 
 function DrawValue({ value }) {
-  if (value !== "DRAW QUEUED") return value;
+  const hint = value === "DRAW QUEUED" ? DRAW_QUEUED_HINT : value === "AWAITING PRIZE" ? AWAITING_PRIZE_HINT : null;
+  if (!hint) return value;
 
   return (
-    <span className="inline-flex items-center gap-2" title={DRAW_QUEUED_HINT}>
+    <span className="inline-flex items-center gap-2" title={hint}>
       <span>{value}</span>
       <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-veil-purple text-[10px] leading-none text-veil-purple">
         !

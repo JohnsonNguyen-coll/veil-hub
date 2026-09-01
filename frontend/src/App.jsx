@@ -319,15 +319,21 @@ function hasMembers(memberCount) {
   return Number(memberCount || 0) > 0;
 }
 
-function formatDrawWindow(value, nowMs = Date.now(), memberCount = 0) {
+function hasPrizeReserve(pool) {
+  return Boolean(pool?.hasPrizeReserve);
+}
+
+function formatDrawWindow(value, nowMs = Date.now(), memberCount = 0, prizeReady = false) {
   if (!hasMembers(memberCount)) return "AWAITING DEPOSIT";
+  if (!prizeReady) return "AWAITING PRIZE";
   const timestampMs = getDrawTimestampMs(value);
   if (!timestampMs) return "--";
   return timestampMs <= nowMs ? "DRAW QUEUED" : formatCountdown(timestampMs, nowMs);
 }
 
-function isDrawDue(value, nowMs = Date.now(), memberCount = 0) {
+function isDrawDue(value, nowMs = Date.now(), memberCount = 0, prizeReady = false) {
   if (!hasMembers(memberCount)) return false;
+  if (!prizeReady) return false;
   const timestampMs = getDrawTimestampMs(value);
   return Boolean(timestampMs && timestampMs <= nowMs);
 }
@@ -341,6 +347,7 @@ function poolFromClub(club) {
     tvl: encryptedLabel(club.encryptedTvlHandle || club.tvl),
     members: String(club.memberCount ?? club.members ?? 0),
     nextDrawAt: club.nextDrawAt || null,
+    hasPrizeReserve: Boolean(club.hasPrizeReserve),
     draw: "--",
     prize: club.encryptedPrizeHandle ? "•••••• USDC" : club.prize || "•••••• USDC",
     status: club.status || "ACTIVE",
@@ -359,6 +366,7 @@ function withOnchainClubView(pool, clubView) {
     keeper: clubView.keeper || pool.keeper,
     members: String(clubView.memberCount ?? pool.members ?? 0),
     nextDrawAt: clubView.nextDrawAt ? Number(clubView.nextDrawAt) * 1000 : pool.nextDrawAt,
+    hasPrizeReserve: Boolean(clubView.hasPrizeReserve),
     status: "ACTIVE"
   };
 }
@@ -491,24 +499,33 @@ function AppContent({ activePage, navigatePage }) {
     () =>
       poolsState.map((pool) => ({
         ...pool,
-        draw: formatDrawWindow(pool.nextDrawAt, nowMs, pool.members),
-        drawDue: isDrawDue(pool.nextDrawAt, nowMs, pool.members),
-        drawStatus: hasMembers(pool.members) ? (isDrawDue(pool.nextDrawAt, nowMs, pool.members) ? "AWAITING_KEEPER" : "KEEPER_WINDOW") : "NO_ONCHAIN_MEMBERS"
+        draw: formatDrawWindow(pool.nextDrawAt, nowMs, pool.members, hasPrizeReserve(pool)),
+        drawDue: isDrawDue(pool.nextDrawAt, nowMs, pool.members, hasPrizeReserve(pool)),
+        drawStatus: !hasMembers(pool.members)
+          ? "NO_ONCHAIN_MEMBERS"
+          : !hasPrizeReserve(pool)
+            ? "KEEPER_FUNDING"
+            : isDrawDue(pool.nextDrawAt, nowMs, pool.members, hasPrizeReserve(pool))
+              ? "AWAITING_KEEPER"
+              : "KEEPER_WINDOW"
       })),
     [poolsState, nowMs]
   );
 
   const activePoolsCount = displayPools.filter((pool) => Number(pool.members || 0) > 0).length;
   const drawTimestamps = displayPools
-    .filter((pool) => hasMembers(pool.members))
+    .filter((pool) => hasMembers(pool.members) && hasPrizeReserve(pool))
     .map((pool) => getDrawTimestampMs(pool.nextDrawAt))
     .filter(Boolean);
+  const hasPoolsAwaitingPrize = displayPools.some((pool) => hasMembers(pool.members) && !hasPrizeReserve(pool));
   const hasDueDraw = drawTimestamps.some((timestamp) => timestamp <= nowMs);
   const nextDrawAt = drawTimestamps
     .filter((timestamp) => timestamp >= nowMs)
     .sort((a, b) => a - b)[0];
-  const dashboardNextDraw = activePoolsCount === 0 ? "AWAITING DEPOSIT" : hasDueDraw ? "DRAW QUEUED" : formatCountdown(nextDrawAt, nowMs);
-  const dashboardNextDrawStatus = activePoolsCount === 0 ? "NO_ONCHAIN_MEMBERS" : hasDueDraw ? "KEEPER_DUE" : "KEEPER_WINDOW";
+  const dashboardNextDraw =
+    activePoolsCount === 0 ? "AWAITING DEPOSIT" : hasDueDraw ? "DRAW QUEUED" : nextDrawAt ? formatCountdown(nextDrawAt, nowMs) : "AWAITING PRIZE";
+  const dashboardNextDrawStatus =
+    activePoolsCount === 0 ? "NO_ONCHAIN_MEMBERS" : hasDueDraw ? "KEEPER_DUE" : hasPoolsAwaitingPrize ? "KEEPER_FUNDING" : "KEEPER_WINDOW";
   const recentDraws = useMemo(
     () =>
       drawsState

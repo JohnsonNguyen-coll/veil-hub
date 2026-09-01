@@ -53,6 +53,7 @@ export function publicClub(club) {
     memberCount: club.memberCount,
     encryptedTvlHandle: club.encryptedTvlHandle,
     encryptedPrizeHandle: club.encryptedPrizeHandle,
+    hasPrizeReserve: Boolean(club.hasPrizeReserve),
     contractClubId: club.contractClubId,
     createTxHash: club.createTxHash,
     status: club.status,
@@ -149,7 +150,6 @@ export async function createClub(req, res) {
     const id = `club-${contractClubId}`;
     const createdAt = new Date().toISOString();
     const drawIntervalMs = Number(body.drawIntervalMs || 604800000);
-    const nextDrawAt = new Date(Date.now() + drawIntervalMs).toISOString();
     const existing = store.clubs.find((item) => item.contractClubId === contractClubId || item.id === id);
     if (existing) return publicClub(existing);
 
@@ -165,11 +165,12 @@ export async function createClub(req, res) {
       inviteCode: createInviteCode(),
       minDeposit: String(body.minDeposit || "1"),
       drawIntervalMs,
-      nextDrawAt,
+      nextDrawAt: null,
       anonymousMembers: Boolean(body.anonymousMembers ?? true),
       memberCount: 0,
       encryptedTvlHandle: "encrypted",
       encryptedPrizeHandle: "encrypted",
+      hasPrizeReserve: false,
       status: "CLUB_CREATED",
       createdAt
     };

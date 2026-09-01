@@ -27,6 +27,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         uint64 nextDrawAt;
         uint256 memberCount;
         uint256 drawCount;
+        bool hasPrizeReserve;
         bool anonymousMembers;
         bool exists;
     }
@@ -47,6 +48,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         euint64 encryptedTotalPrincipal;
         euint64 encryptedYield;
         uint256 drawCount;
+        bool hasPrizeReserve;
     }
 
     mapping(uint256 => Club) private _clubs;
@@ -96,6 +98,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     error WeightedDrawRequiresPublicTotal();
     error InvalidTotalPrincipal(uint64 totalPrincipal);
     error InvalidYieldAmount();
+    error PrizeReserveNotFunded(uint256 clubId);
 
     constructor(IERC7984 token, address owner, uint64 globalDrawInterval) Ownable(owner) {
         if (globalDrawInterval == 0) revert InvalidDrawInterval();
@@ -190,6 +193,10 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         euint64 received = depositToken.confidentialTransferFrom(msg.sender, address(this), amount);
 
         club.encryptedYield = FHE.add(club.encryptedYield, received);
+        club.hasPrizeReserve = true;
+        if (club.nextDrawAt == 0 && club.members.length > 0) {
+            club.nextDrawAt = uint64(block.timestamp + club.drawInterval);
+        }
         _allowContractOnly(club.encryptedYield);
 
         emit YieldAccrued(clubId, msg.sender, received);
@@ -212,6 +219,10 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         euint64 received = depositToken.confidentialTransferFrom(msg.sender, address(this), encryptedAmount);
 
         club.encryptedYield = FHE.add(club.encryptedYield, received);
+        club.hasPrizeReserve = true;
+        if (club.nextDrawAt == 0 && club.members.length > 0) {
+            club.nextDrawAt = uint64(block.timestamp + club.drawInterval);
+        }
         _allowContractOnly(club.encryptedYield);
 
         emit YieldAccrued(clubId, msg.sender, received);
@@ -249,8 +260,9 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         drawId = ++club.drawCount;
         prize = club.encryptedYield;
         club.encryptedYield = FHE.asEuint64(0);
+        club.hasPrizeReserve = false;
         _allowContractOnly(club.encryptedYield);
-        club.nextDrawAt = uint64(block.timestamp + club.drawInterval);
+        club.nextDrawAt = 0;
         _drawTotalPrizes[clubId][drawId] = prize;
 
         uint256 len = club.members.length;
@@ -324,6 +336,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
             nextDrawAt: club.nextDrawAt,
             memberCount: club.members.length,
             drawCount: club.drawCount,
+            hasPrizeReserve: club.hasPrizeReserve,
             anonymousMembers: club.anonymousMembers,
             exists: club.exists
         });
@@ -368,7 +381,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     function _joinIfNeeded(Club storage club, uint256 clubId, address member) private {
         if (club.isMember[member]) return;
         if (club.members.length >= MAX_MEMBERS_PER_DRAW) revert MemberLimitReached(clubId);
-        if (club.members.length == 0 && club.nextDrawAt == 0) {
+        if (club.members.length == 0 && club.nextDrawAt == 0 && club.hasPrizeReserve) {
             club.nextDrawAt = uint64(block.timestamp + club.drawInterval);
         }
         club.isMember[member] = true;
@@ -397,8 +410,9 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     }
 
     function _requireDrawable(Club storage club, uint256 clubId) private view {
-        if (block.timestamp < club.nextDrawAt) revert DrawTooEarly(clubId, club.nextDrawAt);
         if (club.members.length == 0) revert NoMembersInClub(clubId);
+        if (!club.hasPrizeReserve) revert PrizeReserveNotFunded(clubId);
+        if (block.timestamp < club.nextDrawAt) revert DrawTooEarly(clubId, club.nextDrawAt);
     }
 
     function _allocateWeightedPrizes(
