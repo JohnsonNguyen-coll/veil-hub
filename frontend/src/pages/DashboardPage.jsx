@@ -39,14 +39,14 @@ export function DashboardPage({
         kicker="Private Terminal"
         title="Your Confidential Position"
         action={
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full md:w-auto">
-            <VeilButton className="min-w-[150px]" onClick={() => navigatePage("global")}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-3 w-full md:w-auto">
+            <VeilButton className="h-12 min-w-[128px] px-5 !py-0 md:!py-0" onClick={() => navigatePage("global")}>
               Deposit
             </VeilButton>
-            <VeilButton onClick={onDecrypt} variant="secondary">
+            <VeilButton className="h-12 min-w-[128px] px-5 !py-0 md:!py-0 whitespace-nowrap" onClick={onDecrypt} variant="secondary">
               {isDecrypted ? "Refresh Decrypt" : "Decrypt Balance"}
             </VeilButton>
-            <VeilButton onClick={onFaucet} variant="secondary">
+            <VeilButton className="h-12 min-w-[128px] px-5 !py-0 md:!py-0" onClick={onFaucet} variant="secondary">
               Get Faucet
             </VeilButton>
           </div>

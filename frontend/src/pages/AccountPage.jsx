@@ -4,6 +4,8 @@ import { VeilButton, ConnectWalletButton } from "../components/common/VeilButton
 import { MetricCard, Panel } from "../components/common/Panel.jsx";
 import { LabelInput } from "../components/common/Inputs.jsx";
 
+const PRIZE_PAGE_SIZE = 5;
+
 export function AccountPage({
   isDecrypted,
   isClaimed,
@@ -21,7 +23,12 @@ export function AccountPage({
   walletBalance
 }) {
   const [unwrapAmount, setUnwrapAmount] = useState("");
+  const [prizePage, setPrizePage] = useState(1);
   const hasPendingPrizes = pendingPrizes.length > 0;
+  const prizePageCount = Math.max(1, Math.ceil(pendingPrizes.length / PRIZE_PAGE_SIZE));
+  const safePrizePage = Math.min(prizePage, prizePageCount);
+  const prizePageStart = (safePrizePage - 1) * PRIZE_PAGE_SIZE;
+  const visiblePendingPrizes = pendingPrizes.slice(prizePageStart, prizePageStart + PRIZE_PAGE_SIZE);
 
   return (
     <div>
@@ -111,7 +118,7 @@ export function AccountPage({
           {isDecrypted ? (
             hasPendingPrizes ? (
               <div className="border border-veil-gray-light">
-                {pendingPrizes.map((prize) => (
+                {visiblePendingPrizes.map((prize) => (
                   <div
                     className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-veil-gray-light px-5 py-4 last:border-b-0"
                     key={`${prize.clubId}-${prize.drawNumber}`}
@@ -133,6 +140,29 @@ export function AccountPage({
                     </VeilButton>
                   </div>
                 ))}
+                {prizePageCount > 1 ? (
+                  <div className="flex items-center justify-between gap-3 px-5 py-4">
+                    <VeilButton
+                      className="px-4 py-2 text-[12px]"
+                      disabled={safePrizePage === 1}
+                      onClick={() => setPrizePage((current) => Math.max(1, current - 1))}
+                      variant="secondary"
+                    >
+                      Prev
+                    </VeilButton>
+                    <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase">
+                      Page {safePrizePage} / {prizePageCount}
+                    </div>
+                    <VeilButton
+                      className="px-4 py-2 text-[12px]"
+                      disabled={safePrizePage === prizePageCount}
+                      onClick={() => setPrizePage((current) => Math.min(prizePageCount, current + 1))}
+                      variant="secondary"
+                    >
+                      Next
+                    </VeilButton>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="border border-veil-gray-light px-5 py-6 font-data-display text-data-display text-veil-white font-bold">

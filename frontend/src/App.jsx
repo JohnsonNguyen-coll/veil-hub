@@ -124,12 +124,15 @@ async function encryptUint64Input(contractAddress, userAddress, amount) {
   };
 }
 
-async function userDecryptUint64({ handle, contractAddress, userAddress, walletClient }) {
+async function userDecryptUint64Batch({ items, userAddress, walletClient }) {
+  const decryptItems = items.filter((item) => item?.handle && item.handle !== ZERO_BYTES32);
+  if (!decryptItems.length) return {};
+
   return withFheInstance(async (instance) => {
     const keypair = instance.generateKeypair();
     const startTimestamp = Math.floor(Date.now() / 1000);
     const durationDays = 1;
-    const contractAddresses = [contractAddress];
+    const contractAddresses = [...new Set(decryptItems.map((item) => item.contractAddress))];
     const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays);
     const types = {
       UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification
@@ -142,7 +145,7 @@ async function userDecryptUint64({ handle, contractAddress, userAddress, walletC
       message: eip712.message
     });
     const result = await instance.userDecrypt(
-      [{ handle, contractAddress }],
+      decryptItems.map(({ handle, contractAddress }) => ({ handle, contractAddress })),
       keypair.privateKey,
       keypair.publicKey,
       signature.replace("0x", ""),
@@ -151,8 +154,19 @@ async function userDecryptUint64({ handle, contractAddress, userAddress, walletC
       startTimestamp,
       durationDays
     );
-    return BigInt(result[handle] ?? result[handle.toLowerCase()] ?? 0);
+    return Object.fromEntries(
+      decryptItems.map((item) => [item.key, BigInt(result[item.handle] ?? result[item.handle.toLowerCase()] ?? 0)])
+    );
   });
+}
+
+async function userDecryptUint64({ handle, contractAddress, userAddress, walletClient }) {
+  const decrypted = await userDecryptUint64Batch({
+    items: [{ key: "value", handle, contractAddress }],
+    userAddress,
+    walletClient
+  });
+  return decrypted.value ?? 0n;
 }
 
 async function publicDecryptUint64(handle) {
@@ -609,24 +623,21 @@ function AppContent({ activePage, navigatePage }) {
         functionName: "encryptedPrincipalOf",
         args: [0n, address]
       });
+      const tokenBalanceHandle = await publicClient.readContract({
+        ...tokenContract,
+        functionName: "confidentialBalanceOf",
+        args: [address]
+      });
 
       let decryptedDeposit = 0n;
-      let decryptedToken = await getDecryptedTokenBalance();
+      let decryptedToken = 0n;
       let decryptedPendingWinnings = 0n;
       const decryptedPrizes = [];
-
-      if (globalBalanceHandle && globalBalanceHandle !== ZERO_BYTES32) {
-        try {
-          decryptedDeposit = await userDecryptUint64({
-            handle: globalBalanceHandle,
-            contractAddress: VEIL_CLUBS_ADDRESS,
-            userAddress: address,
-            walletClient
-          });
-        } catch {
-          // ignore handle decrypt failure if uninitialized
-        }
-      }
+      const prizeHandleItems = [];
+      const decryptItems = [
+        { key: "wallet", handle: tokenBalanceHandle, contractAddress: VEIL_TOKEN_ADDRESS },
+        { key: "globalPrincipal", handle: globalBalanceHandle, contractAddress: VEIL_CLUBS_ADDRESS }
+      ];
 
       try {
         const pendingWinningsHandle = await publicClient.readContract({
@@ -634,14 +645,11 @@ function AppContent({ activePage, navigatePage }) {
           functionName: "encryptedPendingWinningsOf",
           args: [address]
         });
-        if (pendingWinningsHandle && pendingWinningsHandle !== ZERO_BYTES32) {
-          decryptedPendingWinnings = await userDecryptUint64({
-            handle: pendingWinningsHandle,
-            contractAddress: VEIL_CLUBS_ADDRESS,
-            userAddress: address,
-            walletClient
-          });
-        }
+        decryptItems.push({
+          key: "pendingWinnings",
+          handle: pendingWinningsHandle,
+          contractAddress: VEIL_CLUBS_ADDRESS
+        });
       } catch {
         // Per-draw prize handles below still provide a fallback for older deployments.
       }
@@ -661,18 +669,32 @@ function AppContent({ activePage, navigatePage }) {
             args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
           });
           if (prizeHandle && prizeHandle !== ZERO_BYTES32) {
-            const decryptedPrize = await userDecryptUint64({
+            const key = `prize:${draw.clubId}:${draw.drawNumber}`;
+            const item = {
+              key,
               handle: prizeHandle,
-              contractAddress: VEIL_CLUBS_ADDRESS,
-              userAddress: address,
-              walletClient
-            });
-            if (decryptedPrize > 0n) {
-              decryptedPrizes.push({ ...draw, amount: decryptedPrize });
-            }
+              contractAddress: VEIL_CLUBS_ADDRESS
+            };
+            prizeHandleItems.push({ draw, key });
+            decryptItems.push(item);
           }
         } catch {
           // No readable prize for this wallet/draw; try the next recent draw.
+        }
+      }
+
+      const decryptedValues = await userDecryptUint64Batch({
+        items: decryptItems,
+        userAddress: address,
+        walletClient
+      });
+      decryptedDeposit = decryptedValues.globalPrincipal ?? 0n;
+      decryptedToken = decryptedValues.wallet ?? 0n;
+      decryptedPendingWinnings = decryptedValues.pendingWinnings ?? 0n;
+      for (const { draw, key } of prizeHandleItems) {
+        const decryptedPrize = decryptedValues[key] ?? 0n;
+        if (decryptedPrize > 0n) {
+          decryptedPrizes.push({ ...draw, amount: decryptedPrize });
         }
       }
 

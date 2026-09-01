@@ -130,7 +130,6 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         club.keeper = msg.sender;
         club.minDeposit = minDeposit;
         club.drawInterval = drawInterval;
-        club.nextDrawAt = uint64(block.timestamp + drawInterval);
         club.anonymousMembers = anonymousMembers;
         club.exists = true;
 
@@ -369,6 +368,9 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     function _joinIfNeeded(Club storage club, uint256 clubId, address member) private {
         if (club.isMember[member]) return;
         if (club.members.length >= MAX_MEMBERS_PER_DRAW) revert MemberLimitReached(clubId);
+        if (club.members.length == 0 && club.nextDrawAt == 0) {
+            club.nextDrawAt = uint64(block.timestamp + club.drawInterval);
+        }
         club.isMember[member] = true;
         club.members.push(member);
         emit MemberJoined(clubId);

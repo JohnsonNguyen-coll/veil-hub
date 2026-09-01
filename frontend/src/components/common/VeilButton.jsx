@@ -8,7 +8,7 @@ export function VeilButton({ children, disabled = false, onClick, variant = "pri
 
   return (
     <button
-      className={`${variantClass} font-data-sm text-[13px] md:text-[14px] font-bold tracking-wider px-6 md:px-7 py-3 md:py-3.5 uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      className={`${variantClass} inline-flex items-center justify-center text-center font-data-sm text-[13px] md:text-[14px] font-bold tracking-wider px-6 md:px-7 py-3 md:py-3.5 uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
       disabled={disabled}
       onClick={onClick}
       type="button"
