@@ -26,7 +26,7 @@ export const DRAW_FREQUENCY_OPTIONS = [
 ];
 
 export const DIRECTORY_VISIBILITY_OPTIONS = [
-  { label: "Anonymous UI", anonymousMembers: true },
+  { label: "Invite Only", anonymousMembers: true },
   { label: "Public Directory", anonymousMembers: false }
 ];
 

@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 export function LabelInput({ label, placeholder, value, onChange }) {
   return (
     <label className="flex flex-col gap-2">
@@ -13,21 +15,71 @@ export function LabelInput({ label, placeholder, value, onChange }) {
 }
 
 export function SelectInput({ label, options, value, onChange }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const selectedOption = options.find((option) => option.value === value) || options[0];
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (!dropdownRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const handleSelect = (nextValue) => {
+    onChange?.({ target: { value: nextValue } });
+    setIsOpen(false);
+  };
+
   return (
-    <label className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" ref={dropdownRef}>
       <span className="font-label-caps text-label-caps text-veil-white opacity-50 uppercase">{label}</span>
-      <select
-        className="bg-veil-gray-dark border border-veil-gray-light text-veil-white font-data-sm text-data-sm px-4 py-4 focus:border-veil-purple focus:ring-0"
-        onChange={onChange}
-        value={value}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+      <span className="relative block">
+        <button
+          aria-expanded={isOpen}
+          className={`h-10 w-full bg-veil-gray-dark border text-veil-white font-data-sm text-data-sm px-4 pr-10 text-left uppercase outline-none transition-colors hover:border-veil-purple focus:border-veil-purple focus:ring-1 focus:ring-veil-purple ${
+            isOpen ? "border-veil-purple ring-1 ring-veil-purple" : "border-veil-gray-light"
+          }`}
+          onClick={() => setIsOpen((current) => !current)}
+          type="button"
+        >
+          {selectedOption?.label || "Select"}
+        </button>
+        <span
+          className={`pointer-events-none absolute right-4 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b-2 border-r-2 border-veil-white opacity-50 transition-transform ${
+            isOpen ? "rotate-[225deg]" : ""
+          }`}
+        />
+        {isOpen ? (
+          <div className="absolute left-0 right-0 top-[calc(100%+2px)] z-30 border border-veil-gray-light bg-veil-black shadow-[0_14px_40px_rgba(0,0,0,0.45)]">
+            {options.map((option) => {
+              const isSelected = option.value === value;
+              return (
+                <button
+                  className={`block w-full px-4 py-2 text-left font-data-sm text-data-sm uppercase transition-colors hover:bg-veil-purple hover:text-veil-white ${
+                    isSelected ? "bg-veil-purple text-veil-white" : "text-veil-white"
+                  }`}
+                  key={option.value}
+                  onClick={() => handleSelect(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </span>
+    </div>
   );
 }
 
