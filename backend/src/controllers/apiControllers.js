@@ -67,6 +67,10 @@ export function publicClub(club) {
   return base;
 }
 
+export function publicJoinedClub(club) {
+  return { ...publicClub(club), joined: true };
+}
+
 export function createInviteCode() {
   return `VC-${randomBytes(3).toString("hex").toUpperCase()}`;
 }
@@ -104,8 +108,9 @@ export function config(_req, res) {
 
 export async function dashboard(_req, res) {
   const store = await readStore();
-  const activeClubs = store.clubs.length;
-  const nextDraw = store.clubs
+  const listedClubs = store.clubs.filter(isPubliclyListedClub);
+  const activeClubs = listedClubs.length;
+  const nextDraw = listedClubs
     .map((club) => new Date(club.nextDrawAt).getTime())
     .filter(Number.isFinite)
     .sort((a, b) => a - b)[0];
@@ -116,13 +121,40 @@ export async function dashboard(_req, res) {
     activePools: activeClubs,
     nextDrawAt: nextDraw ? new Date(nextDraw).toISOString() : null,
     recentDraws: store.draws.slice(-5).reverse(),
-    pools: store.clubs.map(publicClub)
+    pools: listedClubs.map(publicClub)
   });
+}
+
+function isPubliclyListedClub(club) {
+  return club.scope !== "PRIVATE" || !club.anonymousMembers;
+}
+
+function findClubByReference(store, clubId, contractClubId) {
+  const id = String(clubId || "").trim();
+  const contractId = String(contractClubId || "").trim();
+  return store.clubs.find(
+    (club) =>
+      (id && (club.id === id || String(club.contractClubId) === id)) ||
+      (contractId && (club.id === contractId || String(club.contractClubId) === contractId))
+  );
+}
+
+function clubsJoinedByAddress(store, address) {
+  const normalized = String(address || "").toLowerCase();
+  const joinedKeys = new Set(
+    (store.memberships || [])
+      .filter((membership) => String(membership.address || "").toLowerCase() === normalized)
+      .flatMap((membership) => [membership.clubId, membership.contractClubId].filter(Boolean).map(String))
+  );
+
+  return store.clubs
+    .filter((club) => joinedKeys.has(String(club.id)) || joinedKeys.has(String(club.contractClubId)))
+    .map(publicJoinedClub);
 }
 
 export async function listClubs(_req, res) {
   const store = await readStore();
-  json(res, 200, { clubs: store.clubs.map(publicClub) });
+  json(res, 200, { clubs: store.clubs.filter(isPubliclyListedClub).map(publicClub) });
 }
 
 export async function getClub(_req, res, [clubId]) {
@@ -213,6 +245,57 @@ export async function joinClub(req, res) {
   });
 }
 
+export async function listMemberships(_req, res, [addressParam]) {
+  const address = normalizeAddress(addressParam);
+  if (!address) return badRequest(res, "Valid wallet address is required");
+
+  const store = await readStore();
+  return json(res, 200, { clubs: clubsJoinedByAddress(store, address) });
+}
+
+export async function recordMembership(req, res) {
+  const body = await readBody(req);
+  const address = normalizeAddress(body.address);
+  const source = String(body.source || "joined").trim() || "joined";
+
+  if (!address) return badRequest(res, "Valid wallet address is required");
+
+  const result = await updateStore((store) => {
+    store.memberships ||= [];
+    const club = findClubByReference(store, body.clubId, body.contractClubId);
+    if (!club) return null;
+
+    const normalizedAddress = address.toLowerCase();
+    const existing = store.memberships.find(
+      (membership) => membership.address === normalizedAddress && membership.clubId === club.id
+    );
+    const now = new Date().toISOString();
+
+    if (existing) {
+      existing.contractClubId = club.contractClubId || existing.contractClubId;
+      existing.source = source;
+      existing.updatedAt = now;
+    } else {
+      store.memberships.push({
+        address: normalizedAddress,
+        clubId: club.id,
+        contractClubId: club.contractClubId || null,
+        source,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    return {
+      club: publicJoinedClub(club),
+      clubs: clubsJoinedByAddress(store, address)
+    };
+  });
+
+  if (!result) return notFound(res);
+  return json(res, 200, result);
+}
+
 export async function listDraws(_req, res) {
   const store = await readStore();
   json(res, 200, { draws: store.draws.slice().reverse() });
@@ -240,6 +323,8 @@ export const routes = [
   route("GET", /^\/api\/clubs\/([^/]+)$/, getClub),
   route("POST", /^\/api\/clubs\/([^/]+)\/invites$/, createInvite),
   route("POST", /^\/api\/join$/, joinClub),
+  route("GET", /^\/api\/memberships\/([^/]+)$/, listMemberships),
+  route("POST", /^\/api\/memberships$/, recordMembership),
   route("GET", /^\/api\/draws$/, listDraws),
   route("POST", /^\/api\/faucet\/request$/, requestFaucet)
 ];

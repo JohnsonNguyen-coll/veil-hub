@@ -16,10 +16,12 @@
       "memberCount": 0,
       "encryptedTvlHandle": "encrypted",
       "encryptedPrizeHandle": "encrypted",
+      "hasPrizeReserve": false,
       "status": "ACTIVE",
       "createdAt": "2026-08-28T00:00:00.000Z"
     }
   ],
   "draws": [],
-  "faucetClaims": {}
+  "faucetClaims": {},
+  "memberships": []
 }

@@ -16,6 +16,15 @@ function isRecoverableSupabaseSchemaError(error) {
   );
 }
 
+function ensureStoreShape(store) {
+  return {
+    clubs: store.clubs || [],
+    draws: store.draws || [],
+    faucetClaims: store.faucetClaims || {},
+    memberships: store.memberships || []
+  };
+}
+
 export async function ensureStore() {
   await mkdir(dataDir, { recursive: true });
 
@@ -23,7 +32,7 @@ export async function ensureStore() {
     return;
   }
 
-  const seed = JSON.parse(await readFile(seedFile, "utf8"));
+  const seed = ensureStoreShape(JSON.parse(await readFile(seedFile, "utf8")));
 
   try {
     await writeFile(dataFile, JSON.stringify(seed, null, 2));
@@ -36,7 +45,7 @@ export async function ensureStore() {
 export async function readStore() {
   if (supabase && !supabaseDisabled) {
     try {
-      return await readSupabaseStore();
+      return ensureStoreShape(await readSupabaseStore());
     } catch (error) {
       console.warn(`[store] Supabase read failed; using fallback storage: ${error.message}`);
       if (isRecoverableSupabaseSchemaError(error)) supabaseDisabled = true;
@@ -46,13 +55,13 @@ export async function readStore() {
   await ensureStore();
 
   if (memoryStore) {
-    return structuredClone(memoryStore);
+    return structuredClone(ensureStoreShape(memoryStore));
   }
 
   try {
-    return JSON.parse(await readFile(dataFile, "utf8"));
+    return ensureStoreShape(JSON.parse(await readFile(dataFile, "utf8")));
   } catch (error) {
-    const seed = JSON.parse(await readFile(seedFile, "utf8"));
+    const seed = ensureStoreShape(JSON.parse(await readFile(seedFile, "utf8")));
     memoryStore = seed;
     console.warn(`[store] read failed; using in-memory storage: ${error.code || error.message}`);
     return structuredClone(memoryStore);
@@ -98,19 +107,25 @@ export async function updateStore(mutator) {
 }
 
 export async function readSupabaseStore() {
-  const [{ data: clubs, error: clubsError }, { data: draws, error: drawsError }, { data: claims, error: claimsError }] =
-    await Promise.all([
-      supabase.from("veil_clubs").select("*").order("created_at", { ascending: true }),
-      supabase.from("veil_draws").select("*").order("created_at", { ascending: true }),
-      supabase.from("veil_faucet_claims").select("*")
-    ]);
+  const [
+    { data: clubs, error: clubsError },
+    { data: draws, error: drawsError },
+    { data: claims, error: claimsError },
+    { data: memberships, error: membershipsError }
+  ] = await Promise.all([
+    supabase.from("veil_clubs").select("*").order("created_at", { ascending: true }),
+    supabase.from("veil_draws").select("*").order("created_at", { ascending: true }),
+    supabase.from("veil_faucet_claims").select("*"),
+    supabase.from("veil_club_memberships").select("*").order("created_at", { ascending: true })
+  ]);
 
   if (clubsError) throw clubsError;
   if (drawsError) throw drawsError;
   if (claimsError) throw claimsError;
+  if (membershipsError) throw membershipsError;
 
   if (!clubs.length) {
-    const seed = JSON.parse(await readFile(seedFile, "utf8"));
+    const seed = ensureStoreShape(JSON.parse(await readFile(seedFile, "utf8")));
     await writeSupabaseStore(seed);
     return seed;
   }
@@ -118,13 +133,16 @@ export async function readSupabaseStore() {
   return {
     clubs: clubs.map(clubFromRow),
     draws: draws.map(drawFromRow),
-    faucetClaims: Object.fromEntries(claims.map((claim) => [claim.address, Number(claim.last_claim_at)]))
+    faucetClaims: Object.fromEntries(claims.map((claim) => [claim.address, Number(claim.last_claim_at)])),
+    memberships: memberships.map(membershipFromRow)
   };
 }
 
 export async function writeSupabaseStore(store) {
-  const clubRows = store.clubs.map(clubToRow);
-  const drawRows = store.draws.map(drawToRow);
+  const normalizedStore = ensureStoreShape(store);
+  const clubRows = normalizedStore.clubs.map(clubToRow);
+  const drawRows = normalizedStore.draws.map(drawToRow);
+  const membershipRows = normalizedStore.memberships.map(membershipToRow);
   const claimRows = Object.entries(store.faucetClaims || {}).map(([address, lastClaimAt]) => ({
     address,
     last_claim_at: Number(lastClaimAt),
@@ -142,6 +160,13 @@ export async function writeSupabaseStore(store) {
   if (claimRows.length) {
     const { error: claimsError } = await supabase.from("veil_faucet_claims").upsert(claimRows, { onConflict: "address" });
     if (claimsError) throw claimsError;
+  }
+
+  if (membershipRows.length) {
+    const { error: membershipsError } = await supabase
+      .from("veil_club_memberships")
+      .upsert(membershipRows, { onConflict: "address,club_id" });
+    if (membershipsError) throw membershipsError;
   }
 }
 
@@ -161,6 +186,7 @@ export function clubFromRow(row) {
     memberCount: row.member_count,
     encryptedTvlHandle: row.encrypted_tvl_handle,
     encryptedPrizeHandle: row.encrypted_prize_handle,
+    hasPrizeReserve: Boolean(row.has_prize_reserve),
     contractClubId: row.contract_club_id,
     createTxHash: row.create_tx_hash,
     status: row.status,
@@ -184,6 +210,7 @@ export function clubToRow(club) {
     member_count: Number(club.memberCount || 0),
     encrypted_tvl_handle: club.encryptedTvlHandle || "encrypted",
     encrypted_prize_handle: club.encryptedPrizeHandle || "encrypted",
+    has_prize_reserve: Boolean(club.hasPrizeReserve),
     contract_club_id: club.contractClubId || null,
     create_tx_hash: club.createTxHash || null,
     status: club.status || "ACTIVE",
@@ -219,5 +246,27 @@ export function drawToRow(draw) {
     tx_hash: draw.txHash,
     source: draw.source || "manual",
     created_at: draw.createdAt || new Date().toISOString()
+  };
+}
+
+export function membershipFromRow(row) {
+  return {
+    address: row.address,
+    clubId: row.club_id,
+    contractClubId: row.contract_club_id,
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function membershipToRow(membership) {
+  return {
+    address: String(membership.address || "").toLowerCase(),
+    club_id: membership.clubId,
+    contract_club_id: membership.contractClubId || null,
+    source: membership.source || "joined",
+    created_at: membership.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
   };
 }

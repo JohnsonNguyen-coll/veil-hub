@@ -76,7 +76,7 @@ export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDepo
         <VeilButton onClick={isDecrypted ? onHideBalance : onDecrypt} variant="secondary">
           {isDecrypted ? `Hide Balance ${walletBalance} cUSDC` : "Decrypt Balance"}
         </VeilButton>
-        <VeilButton onClick={() => navigator.clipboard && navigator.clipboard.writeText(`VC-${(club.id || "").toUpperCase()}`)} variant="secondary">
+        <VeilButton onClick={() => navigator.clipboard && navigator.clipboard.writeText(club.inviteCode || "")} variant="secondary">
           Copy Invite
         </VeilButton>
       </div>
@@ -130,7 +130,7 @@ export function InviteForm({ onJoin }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <LabelInput label="Invite Code" onChange={(e) => setCode(e.target.value)} placeholder="VC-CLUB-01" value={code} />
+      <LabelInput label="Invite Code" onChange={(e) => setCode(e.target.value)} placeholder="VC-ABC123" value={code} />
       <div className="border border-veil-gray-light bg-veil-gray-dark p-4">
         <span className="font-data-sm text-data-sm text-veil-white opacity-70 uppercase">&gt; invite validates membership gate before encrypted deposit</span>
       </div>

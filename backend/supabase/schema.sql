@@ -10,11 +10,12 @@ create table if not exists public.veil_clubs (
   invite_code text unique,
   min_deposit text not null default '1',
   draw_interval_ms bigint not null,
-  next_draw_at timestamptz not null,
+  next_draw_at timestamptz,
   anonymous_members boolean not null default false,
   member_count integer not null default 0,
   encrypted_tvl_handle text not null,
   encrypted_prize_handle text not null,
+  has_prize_reserve boolean not null default false,
   status text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -28,11 +29,13 @@ alter table public.veil_clubs add column if not exists keeper text not null defa
 alter table public.veil_clubs add column if not exists invite_code text;
 alter table public.veil_clubs add column if not exists min_deposit text not null default '1';
 alter table public.veil_clubs add column if not exists draw_interval_ms bigint not null default 86400000;
-alter table public.veil_clubs add column if not exists next_draw_at timestamptz not null default now();
+alter table public.veil_clubs add column if not exists next_draw_at timestamptz;
+alter table public.veil_clubs alter column next_draw_at drop not null;
 alter table public.veil_clubs add column if not exists anonymous_members boolean not null default false;
 alter table public.veil_clubs add column if not exists member_count integer not null default 0;
 alter table public.veil_clubs add column if not exists encrypted_tvl_handle text not null default 'encrypted';
 alter table public.veil_clubs add column if not exists encrypted_prize_handle text not null default 'encrypted';
+alter table public.veil_clubs add column if not exists has_prize_reserve boolean not null default false;
 alter table public.veil_clubs add column if not exists status text not null default 'ACTIVE';
 alter table public.veil_clubs add column if not exists updated_at timestamptz not null default now();
 
@@ -57,15 +60,32 @@ create table if not exists public.veil_faucet_claims (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.veil_club_memberships (
+  address text not null,
+  club_id text not null,
+  contract_club_id text,
+  source text not null default 'joined',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (address, club_id)
+);
+
+alter table public.veil_club_memberships add column if not exists contract_club_id text;
+alter table public.veil_club_memberships add column if not exists source text not null default 'joined';
+alter table public.veil_club_memberships add column if not exists created_at timestamptz not null default now();
+alter table public.veil_club_memberships add column if not exists updated_at timestamptz not null default now();
+
 alter table public.veil_clubs enable row level security;
 alter table public.veil_draws enable row level security;
 alter table public.veil_faucet_claims enable row level security;
+alter table public.veil_club_memberships enable row level security;
 
 drop policy if exists "Public can read clubs" on public.veil_clubs;
 drop policy if exists "Public can read draws" on public.veil_draws;
 drop policy if exists "Service role writes clubs" on public.veil_clubs;
 drop policy if exists "Service role writes draws" on public.veil_draws;
 drop policy if exists "Service role manages faucet claims" on public.veil_faucet_claims;
+drop policy if exists "Service role manages club memberships" on public.veil_club_memberships;
 
 create policy "Public can read clubs"
 on public.veil_clubs for select
@@ -91,6 +111,12 @@ with check (true);
 
 create policy "Service role manages faucet claims"
 on public.veil_faucet_claims for all
+to service_role
+using (true)
+with check (true);
+
+create policy "Service role manages club memberships"
+on public.veil_club_memberships for all
 to service_role
 using (true)
 with check (true);

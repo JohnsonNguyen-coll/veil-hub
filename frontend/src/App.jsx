@@ -375,6 +375,22 @@ function sameAddress(left, right) {
   return String(left || "").toLowerCase() === String(right || "").toLowerCase();
 }
 
+function clubRecordKey(club) {
+  return String(club?.contractClubId ?? club?.contractId ?? club?.id ?? "");
+}
+
+function mergeClubRecords(...groups) {
+  const merged = new Map();
+  for (const group of groups) {
+    for (const club of group || []) {
+      const key = clubRecordKey(club);
+      if (!key) continue;
+      merged.set(key, { ...(merged.get(key) || {}), ...club });
+    }
+  }
+  return [...merged.values()];
+}
+
 function AppContent({ activePage, navigatePage }) {
   const { address } = useAccount();
   const publicClient = usePublicClient();
@@ -398,6 +414,44 @@ function AppContent({ activePage, navigatePage }) {
 
   const closeToast = () => {
     setToast(null);
+  };
+
+  const fetchJoinedClubs = async () => {
+    if (!address) return [];
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/memberships/${address}`);
+      if (!res.ok) return [];
+      const payload = await res.json();
+      return Array.isArray(payload.clubs) ? payload.clubs : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const rememberJoinedClub = async (club, source = "joined") => {
+    if (!address || !club) return;
+    const contractClubId = String(club.contractClubId ?? club.contractId ?? "");
+    const clubId = String(club.id ?? (contractClubId ? `club-${contractClubId}` : ""));
+    if (!clubId && !contractClubId) return;
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/memberships`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, clubId, contractClubId, source })
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        const nextJoined = Array.isArray(payload.clubs) ? payload.clubs : payload.club ? [payload.club] : [];
+        setPoolsState((current) => mergeClubRecords(current, nextJoined));
+        return;
+      }
+    } catch {
+      // Keep the current session responsive if backend membership sync is temporarily unavailable.
+    }
+
+    const localJoined = [{ ...club, joined: true }];
+    setPoolsState((current) => mergeClubRecords(current, localJoined));
   };
 
   const getDisplayBalance = (value) => {
@@ -433,7 +487,8 @@ function AppContent({ activePage, navigatePage }) {
       // Backend metadata is optional; onchain global state is still readable.
     }
 
-    const rawPools = backendPools.length ? backendPools : defaultPools;
+    const storedJoinedClubs = await fetchJoinedClubs();
+    const rawPools = mergeClubRecords(backendPools.length ? backendPools : defaultPools, storedJoinedClubs);
     const nextPools = await Promise.all(
       rawPools.map(async (club) => {
         const pool = poolFromClub(club);
@@ -487,6 +542,16 @@ function AppContent({ activePage, navigatePage }) {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+    fetchJoinedClubs().then((clubs) => {
+      if (isMounted) setPoolsState((current) => mergeClubRecords(current, clubs));
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [address]);
+
+  useEffect(() => {
     refreshPools();
     refreshDraws();
     const timer = setInterval(() => {
@@ -494,7 +559,7 @@ function AppContent({ activePage, navigatePage }) {
       refreshDraws();
     }, 30000);
     return () => clearInterval(timer);
-  }, [publicClient, clubContract]);
+  }, [publicClient, clubContract, address]);
 
   const displayPools = useMemo(
     () =>
@@ -610,6 +675,10 @@ function AppContent({ activePage, navigatePage }) {
 
       if (receipt.status === "success") {
         await refreshPools();
+        if (BigInt(clubId) !== 0n) {
+          const joinedPool = displayPools.find((pool) => String(pool.contractId) === String(clubId));
+          if (joinedPool) await rememberJoinedClub(joinedPool, "deposit");
+        }
         if (isDecrypted || availableBalance != null) {
           setWalletBalance(availableBalance - parsedAmount);
           if (BigInt(clubId) === 0n) {
@@ -1166,7 +1235,8 @@ function AppContent({ activePage, navigatePage }) {
       });
 
       if (res.ok) {
-        await res.json();
+        const data = await res.json();
+        await rememberJoinedClub(data.club, "created");
         await refreshPools();
         showToast("Club Created", `Private Club ${clubData.name} deployed at ID #${createdContractClubId}!`, hash);
       } else {
@@ -1196,6 +1266,8 @@ function AppContent({ activePage, navigatePage }) {
       });
       if (res.ok) {
         const data = await res.json();
+        await rememberJoinedClub(data.club, "invite");
+        await refreshPools();
         showToast("Joined Club", `Joined ${data.club.name} via invite ${inviteCode}.`);
         return;
       }
