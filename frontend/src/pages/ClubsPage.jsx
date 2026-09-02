@@ -104,11 +104,11 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
       />
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
         <Panel title="Club Browser">
-          <div className="mb-5 flex border border-veil-gray-light" role="tablist">
+          <div className="mb-5 grid grid-cols-1 overflow-hidden border border-veil-gray-light sm:grid-cols-3" role="tablist">
             {clubTabs.map((tab) => (
               <button
                 aria-selected={activeClubTab === tab.id}
-                className={`flex-1 px-4 py-3 text-left font-button text-button uppercase transition-colors ${
+                className={`flex min-h-14 items-center justify-center gap-3 border-b border-veil-gray-light px-4 py-3 text-center font-button text-button uppercase transition-colors last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 ${
                   activeClubTab === tab.id ? "bg-veil-purple text-veil-white" : "bg-veil-black text-veil-white hover:bg-veil-gray-dark"
                 }`}
                 key={tab.id}
@@ -116,10 +116,10 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
                 role="tab"
                 type="button"
               >
-                <span>{tab.label}</span>
+                <span className="leading-none">{tab.label}</span>
                 <span
-                  className={`ml-2 inline-flex min-w-7 items-center justify-center border px-2 py-0.5 text-[11px] leading-none ${
-                    activeClubTab === tab.id ? "border-veil-white/40 bg-veil-black/20" : "border-veil-gray-light bg-veil-gray-dark text-veil-white/60"
+                  className={`inline-flex h-6 min-w-8 items-center justify-center border px-2 font-data-sm text-[11px] leading-none ${
+                    activeClubTab === tab.id ? "border-veil-white/50 bg-veil-black/20 text-veil-white" : "border-veil-gray-light bg-veil-gray-dark text-veil-white/60"
                   }`}
                 >
                   {tab.count}
