@@ -26,6 +26,7 @@ export function AccountPage({
   const [unwrapAmount, setUnwrapAmount] = useState("");
   const [prizePage, setPrizePage] = useState(1);
   const hasPendingPrizes = pendingPrizes.length > 0;
+  const canWithdrawGlobalPrincipal = Number(userDeposit || 0) > 0;
   const prizePageCount = Math.max(1, Math.ceil(pendingPrizes.length / PRIZE_PAGE_SIZE));
   const safePrizePage = Math.min(prizePage, prizePageCount);
   const prizePageStart = (safePrizePage - 1) * PRIZE_PAGE_SIZE;
@@ -72,8 +73,8 @@ export function AccountPage({
             <VeilButton onClick={onDecrypt}>
               {isDecrypted ? "Re-decrypt Balance" : "Decrypt Balance"}
             </VeilButton>
-            <VeilButton disabled={userDeposit <= 0} onClick={onWithdraw} variant="secondary">
-              Withdraw Principal
+            <VeilButton disabled={!canWithdrawGlobalPrincipal} onClick={onWithdraw} variant="secondary">
+              Withdraw Global Principal
             </VeilButton>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">

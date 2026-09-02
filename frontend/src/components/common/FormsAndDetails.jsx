@@ -46,8 +46,9 @@ export function TransactionForm({ isDecrypted, mode, onDecrypt, onHideBalance, o
   );
 }
 
-export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, walletBalance }) {
+export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, onWithdraw, principalBalance, walletBalance }) {
   const [depositAmount, setDepositAmount] = useState("10");
+  const canWithdraw = isDecrypted && Number(principalBalance || 0) > 0;
 
   if (!club) {
     return (
@@ -91,16 +92,13 @@ export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDepo
             </VeilButton>
           </div>
         </div>
-        <VeilButton className="w-fit" onClick={() => {
-          setDepositAmount("10");
-          onDeposit(10);
-        }} variant="secondary">
-          Quick 10 cUSDC
-        </VeilButton>
       </div>
       <div className="flex flex-wrap gap-3">
         <VeilButton onClick={isDecrypted ? onHideBalance : onDecrypt} variant="secondary">
           {isDecrypted ? `Hide Balance ${walletBalance} cUSDC` : "Decrypt Balance"}
+        </VeilButton>
+        <VeilButton disabled={!canWithdraw} onClick={onWithdraw} variant="secondary">
+          Withdraw Principal{isDecrypted && principalBalance != null ? ` ${principalBalance} cUSDC` : ""}
         </VeilButton>
         <VeilButton onClick={() => navigator.clipboard && navigator.clipboard.writeText(club.inviteCode || "")} variant="secondary">
           Copy Invite

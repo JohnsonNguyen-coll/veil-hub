@@ -419,6 +419,7 @@ function AppContent({ activePage, navigatePage }) {
   const [walletBalance, setWalletBalance] = useState(null);
   const [userDeposit, setUserDeposit] = useState(null);
   const [clubDeposit, setClubDeposit] = useState(null);
+  const [clubDepositsById, setClubDepositsById] = useState({});
   const [pendingPrize, setPendingPrize] = useState(null);
   const [pendingPrizes, setPendingPrizes] = useState([]);
   const [pendingPrizeDraw, setPendingPrizeDraw] = useState(null);
@@ -486,6 +487,14 @@ function AppContent({ activePage, navigatePage }) {
     if (value == null) return "0.00";
     return formatUnits(value, TOKEN_DECIMALS);
   };
+
+  const displayClubDepositsById = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(clubDepositsById).map(([clubId, balance]) => [clubId, getDisplayBalance(balance)])
+      ),
+    [clubDepositsById]
+  );
 
   const clubContract = useMemo(
     () => ({
@@ -579,6 +588,7 @@ function AppContent({ activePage, navigatePage }) {
     const decryptedPrizes = [];
     const prizeHandleItems = [];
     const clubPrincipalItems = [];
+    const nextClubDepositsById = {};
     const decryptItems = [
       { key: "wallet", handle: tokenBalanceHandle, contractAddress: VEIL_TOKEN_ADDRESS },
       { key: "globalPrincipal", handle: globalBalanceHandle, contractAddress: VEIL_CLUBS_ADDRESS }
@@ -594,7 +604,7 @@ function AppContent({ activePage, navigatePage }) {
           args: [BigInt(contractId), address]
         });
         const key = `clubPrincipal:${contractId}`;
-        clubPrincipalItems.push(key);
+        clubPrincipalItems.push({ key, contractId });
         decryptItems.push({
           key,
           handle: clubPrincipalHandle,
@@ -654,7 +664,11 @@ function AppContent({ activePage, navigatePage }) {
       walletClient
     });
     const decryptedDeposit = decryptedValues.globalPrincipal ?? 0n;
-    const decryptedClubDeposit = clubPrincipalItems.reduce((total, key) => total + (decryptedValues[key] ?? 0n), 0n);
+    const decryptedClubDeposit = clubPrincipalItems.reduce((total, { key, contractId }) => {
+      const balance = decryptedValues[key] ?? 0n;
+      nextClubDepositsById[contractId] = balance;
+      return total + balance;
+    }, 0n);
     const decryptedToken = decryptedValues.wallet ?? 0n;
     const decryptedPendingWinnings = decryptedValues.pendingWinnings ?? 0n;
 
@@ -670,6 +684,7 @@ function AppContent({ activePage, navigatePage }) {
 
     setUserDeposit(decryptedDeposit);
     setClubDeposit(decryptedClubDeposit);
+    setClubDepositsById(nextClubDepositsById);
     setWalletBalance(decryptedToken);
     setPendingPrize(decryptedPrizeTotal);
     setPendingPrizes(decryptedPrizes);
@@ -679,6 +694,7 @@ function AppContent({ activePage, navigatePage }) {
 
     return {
       clubDeposit: decryptedClubDeposit,
+      clubDepositsById: nextClubDepositsById,
       pendingPrize: decryptedPrizeTotal,
       pendingPrizes: decryptedPrizes,
       userDeposit: decryptedDeposit,
@@ -854,7 +870,7 @@ function AppContent({ activePage, navigatePage }) {
         showToast(
           isDecryptFailure ? "Decrypt Error" : "Deposit Error",
           isDecryptFailure
-            ? "Could not decrypt your cUSDC balance for deposit validation. Retry, or click Decrypt Balance first."
+            ? "Could not decrypt your wallet cUSDC balance. Please retry the action after the current wallet request settles."
             : depositError
         );
       }
@@ -891,27 +907,36 @@ function AppContent({ activePage, navigatePage }) {
     setPendingPrizes([]);
     setPendingPrizeDraw(null);
     setClubDeposit(null);
+    setClubDepositsById({});
     showToast("Balance Hidden", "Positions hidden in local component state.");
   };
 
-  const handleWithdraw = async () => {
+  const handleWithdraw = async (clubId = 0n, poolName = "Global Pool") => {
     if (!address || !walletClient || !publicClient || !IS_CONTRACT_CONFIGURED) {
       showToast("Wallet Required", "Connect wallet to withdraw principal.");
       return;
     }
 
     try {
-      showToast("Submitting Exit", "Withdrawing principal from Global Pool...");
+      const targetClubId = BigInt(clubId);
+      showToast("Submitting Exit", `Withdrawing principal from ${poolName}...`);
       const hash = await walletClient.writeContract({
         ...clubContract,
         functionName: "withdrawPrincipal",
-        args: [0n]
+        args: [targetClubId]
       });
       showToast("Transaction Sent", "Waiting for withdrawal confirmation...", hash);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status === "success") {
         showToast("Withdrawal Confirmed", "Principal returned to your confidential token balance.", hash);
-        setUserDeposit(0n);
+        if (targetClubId === 0n) {
+          setUserDeposit(0n);
+        } else {
+          const clubKey = String(targetClubId);
+          const withdrawnBalance = clubDepositsById[clubKey] ?? 0n;
+          setClubDepositsById((current) => ({ ...current, [clubKey]: 0n }));
+          setClubDeposit((current) => (current == null ? 0n : current - withdrawnBalance));
+        }
         setIsDecrypted(false);
       } else {
         showToast("Withdrawal Reverted", "Transaction reverted on Sepolia.", hash);
@@ -1361,11 +1386,13 @@ function AppContent({ activePage, navigatePage }) {
           <ClubsPage
             clubs={displayPools}
             isDecrypted={isDecrypted}
+            clubDepositsById={displayClubDepositsById}
             onCreateClub={handleCreateClub}
             onDecrypt={handleDecrypt}
             onDeposit={handleDeposit}
             onHideBalance={handleHideBalance}
             onJoinClub={handleJoinClub}
+            onWithdraw={handleWithdraw}
             walletBalance={isDecrypted ? getDisplayBalance(walletBalance) : null}
           />
         ) : null}

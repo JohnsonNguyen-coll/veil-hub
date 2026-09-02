@@ -1,5 +1,4 @@
 import { PageHeader } from "../components/common/PageHeader.jsx";
-import { VeilButton } from "../components/common/VeilButton.jsx";
 import { MetricCard, Panel } from "../components/common/Panel.jsx";
 import { TransactionForm } from "../components/common/FormsAndDetails.jsx";
 import { DrawEngine } from "../components/common/Inputs.jsx";
@@ -11,11 +10,6 @@ export function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposi
         body="The public entry pool for onboarding. Anyone can deposit encrypted cUSDC and join confidential prize draws without exposing balances."
         kicker="Public Pool"
         title="Global No-Loss Pool"
-        action={
-          <div className="flex flex-wrap gap-3">
-            <VeilButton onClick={() => onDeposit(10, "Global Pool")}>Quick Deposit 10 cUSDC</VeilButton>
-          </div>
-        }
       />
       <section className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-veil-gray-light mb-8">
         <MetricCard label="Encrypted TVL" value={pool?.tvl || "encrypted"} status="TOTAL_HIDDEN" />

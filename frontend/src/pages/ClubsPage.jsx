@@ -18,7 +18,18 @@ function normalizeClub(club) {
   };
 }
 
-export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideBalance, onJoinClub, onDeposit, walletBalance }) {
+export function ClubsPage({
+  clubDepositsById = {},
+  clubs,
+  isDecrypted,
+  onCreateClub,
+  onDecrypt,
+  onHideBalance,
+  onJoinClub,
+  onDeposit,
+  onWithdraw,
+  walletBalance
+}) {
   const directoryClubs = useMemo(() => clubs.filter((pool) => pool.scope === "PRIVATE" && !pool.anonymousMembers), [clubs]);
   const createdClubs = useMemo(
     () => clubs.filter((pool) => pool.scope === "PRIVATE" && pool.joined && pool.membershipSource === "created"),
@@ -87,6 +98,8 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
   const activePage = Math.min(clubPages[activeClubTab] || 1, pageCount);
   const pageStart = (activePage - 1) * CLUB_PAGE_SIZE;
   const visibleClubs = activeClubs.slice(pageStart, pageStart + CLUB_PAGE_SIZE);
+  const selectedClubId = String(selectedClub?.contractId ?? selectedClub?.contractClubId ?? "");
+  const selectedClubBalance = selectedClubId ? clubDepositsById[selectedClubId] : null;
 
   useEffect(() => {
     setClubPages((current) => ({
@@ -190,6 +203,8 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
             onDeposit={(amt) =>
               onDeposit(amt, selectedClub?.name || "Private Club", selectedClub?.contractId ?? selectedClub?.contractClubId ?? 0n)
             }
+            onWithdraw={() => onWithdraw?.(selectedClub?.contractId ?? selectedClub?.contractClubId ?? 0n, selectedClub?.name || "Private Club")}
+            principalBalance={selectedClubBalance}
             walletBalance={walletBalance}
           />
         </Panel>
