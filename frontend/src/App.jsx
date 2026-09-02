@@ -384,6 +384,7 @@ function AppContent({ activePage, navigatePage }) {
   const [drawsState, setDrawsState] = useState(defaultDrawHistory);
   const [walletBalance, setWalletBalance] = useState(null);
   const [userDeposit, setUserDeposit] = useState(null);
+  const [clubDeposit, setClubDeposit] = useState(null);
   const [pendingPrize, setPendingPrize] = useState(null);
   const [pendingPrizes, setPendingPrizes] = useState([]);
   const [pendingPrizeDraw, setPendingPrizeDraw] = useState(null);
@@ -611,7 +612,11 @@ function AppContent({ activePage, navigatePage }) {
         await refreshPools();
         if (isDecrypted || availableBalance != null) {
           setWalletBalance(availableBalance - parsedAmount);
-          setUserDeposit((current) => (current == null ? parsedAmount : current + parsedAmount));
+          if (BigInt(clubId) === 0n) {
+            setUserDeposit((current) => (current == null ? parsedAmount : current + parsedAmount));
+          } else {
+            setClubDeposit((current) => (current == null ? parsedAmount : current + parsedAmount));
+          }
           setIsDecrypted(true);
         }
         showToast("Deposit Confirmed", `Encrypted deposit of ${amountInput} cUSDC confirmed in ${poolName}.`, hash);
@@ -647,14 +652,37 @@ function AppContent({ activePage, navigatePage }) {
       });
 
       let decryptedDeposit = 0n;
+      let decryptedClubDeposit = 0n;
       let decryptedToken = 0n;
       let decryptedPendingWinnings = 0n;
       const decryptedPrizes = [];
       const prizeHandleItems = [];
+      const clubPrincipalItems = [];
       const decryptItems = [
         { key: "wallet", handle: tokenBalanceHandle, contractAddress: VEIL_TOKEN_ADDRESS },
         { key: "globalPrincipal", handle: globalBalanceHandle, contractAddress: VEIL_CLUBS_ADDRESS }
       ];
+
+      for (const pool of displayPools) {
+        const contractId = String(pool.contractId ?? "");
+        if (!contractId || contractId === "0") continue;
+        try {
+          const clubPrincipalHandle = await publicClient.readContract({
+            ...clubContract,
+            functionName: "encryptedPrincipalOf",
+            args: [BigInt(contractId), address]
+          });
+          const key = `clubPrincipal:${contractId}`;
+          clubPrincipalItems.push(key);
+          decryptItems.push({
+            key,
+            handle: clubPrincipalHandle,
+            contractAddress: VEIL_CLUBS_ADDRESS
+          });
+        } catch {
+          // Some backend club metadata can outlive an older deployment; skip unreadable club balances.
+        }
+      }
 
       try {
         const pendingWinningsHandle = await publicClient.readContract({
@@ -706,6 +734,7 @@ function AppContent({ activePage, navigatePage }) {
         walletClient
       });
       decryptedDeposit = decryptedValues.globalPrincipal ?? 0n;
+      decryptedClubDeposit = clubPrincipalItems.reduce((total, key) => total + (decryptedValues[key] ?? 0n), 0n);
       decryptedToken = decryptedValues.wallet ?? 0n;
       decryptedPendingWinnings = decryptedValues.pendingWinnings ?? 0n;
       for (const { draw, key } of prizeHandleItems) {
@@ -718,6 +747,7 @@ function AppContent({ activePage, navigatePage }) {
       const decryptedDrawPrizeTotal = decryptedPrizes.reduce((total, prize) => total + prize.amount, 0n);
       const decryptedPrizeTotal = decryptedPendingWinnings > 0n ? decryptedPendingWinnings : decryptedDrawPrizeTotal;
       setUserDeposit(decryptedDeposit);
+      setClubDeposit(decryptedClubDeposit);
       setWalletBalance(decryptedToken);
       setPendingPrize(decryptedPrizeTotal);
       setPendingPrizes(decryptedPrizes);
@@ -744,6 +774,7 @@ function AppContent({ activePage, navigatePage }) {
     setPendingPrize(null);
     setPendingPrizes([]);
     setPendingPrizeDraw(null);
+    setClubDeposit(null);
     showToast("Balance Hidden", "Positions hidden in local component state.");
   };
 
@@ -1235,6 +1266,7 @@ function AppContent({ activePage, navigatePage }) {
             pendingPrize={getDisplayBalance(pendingPrize)}
             pendingPrizeDraw={pendingPrizeDraw}
             pendingPrizes={displayPendingPrizes}
+            clubDeposit={getDisplayBalance(clubDeposit)}
             userDeposit={getDisplayBalance(userDeposit)}
             walletBalance={getDisplayBalance(walletBalance)}
           />

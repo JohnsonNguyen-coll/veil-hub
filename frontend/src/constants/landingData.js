@@ -1,6 +1,6 @@
 export const landingAdvantages = [
   ["Private Capital", "Deposits and odds remain encrypted via FHEVM on-chain keys."],
-  ["No-Loss Exit", "Withdraw 100% of your principal anytime. Yield funds the prize."],
+  ["No-Loss Exit", "Withdraw 100% of your principal anytime. Sepolia mock reserve funds the prize."],
   ["Social Pools", "Private Clubs enable group prize pools without bankroll exposure."],
   ["Onchain Flow", "Wallet actions are only acknowledged after Sepolia transaction receipts."]
 ];
@@ -32,7 +32,7 @@ export const landingPoolModes = [
 
 export const landingDrawSteps = [
   ["01", "Deposit", "The user enters a pool with an encrypted amount, so the chain sees activity but not the plaintext balance."],
-  ["02", "Yield", "Principal remains withdrawable while generated yield accumulates into the prize stream."],
+  ["02", "Prize Funding", "Principal remains withdrawable while a Sepolia mock reserve funds prizes; future mainnet yield routing can replace the mock source."],
   ["03", "Draw", "A scheduled draw selects a winner from confidential pool state and emits only the public event surface."],
   ["04", "Claim", "The winner decrypts their own prize and claims it, without revealing everyone else's position."]
 ];
@@ -47,7 +47,7 @@ export const landingBriefs = [
   {
     eyebrow: "01 / Product",
     title: "Global Pool + Private Clubs",
-    body: "VeilHubs is a confidential no-loss prize pool. New users can enter the public Global Pool, while groups can create invitation-only clubs with independent deposits, yield, and draws.",
+    body: "VeilHubs is a confidential no-loss prize pool. New users can enter the public Global Pool, while groups can create invitation-only clubs with independent deposits, mock prize funding, and draws.",
     bullets: ["Public onboarding pool", "Invite-based private clubs", "No-loss principal withdrawals", "Encrypted prize source"]
   },
   {

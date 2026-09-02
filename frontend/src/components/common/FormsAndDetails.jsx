@@ -59,7 +59,6 @@ export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDepo
     <div className="flex flex-col gap-5">
       <div>
         <h2 className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white uppercase">{club.name}</h2>
-        <p className="font-data-sm text-data-sm text-veil-white opacity-50 mt-2">admin: {club.admin || "protocol"}</p>
       </div>
       <div className="grid grid-cols-2 gap-0 border border-veil-gray-light">
         <MetricCard label="Encrypted TVL" value={club.tvl || "encrypted"} status="HIDDEN" />

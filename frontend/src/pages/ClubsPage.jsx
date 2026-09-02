@@ -18,8 +18,8 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
   return (
     <div>
       <PageHeader
-        body="Create or join invitation-only prize pools. Each club has independent encrypted deposits, private odds, yield routing, and confidential prize claims."
-        kicker="Social Yield"
+        body="Create or join invitation-only prize pools. Each club has independent encrypted deposits, private odds, keeper-funded prize reserves, and confidential prize claims."
+        kicker="Private Pools"
         title="Private Clubs"
       />
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">

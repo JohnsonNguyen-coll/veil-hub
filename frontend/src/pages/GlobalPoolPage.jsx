@@ -20,7 +20,7 @@ export function GlobalPoolPage({ isDecrypted, onDecrypt, onHideBalance, onDeposi
       <section className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-veil-gray-light mb-8">
         <MetricCard label="Encrypted TVL" value={pool?.tvl || "encrypted"} status="TOTAL_HIDDEN" />
         <MetricCard label="Members" value={pool?.members || "0"} status="PUBLIC_COUNT" />
-        <MetricCard label="Yield Strategy" value="ONCHAIN" status="CONFIG_REQUIRED" />
+        <MetricCard label="Prize Funding" value="MOCK RESERVE" status="SEPOLIA_KEEPER" />
         <MetricCard label="Prize" value="••••••" status="WINNER_DECRYPTS" />
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">

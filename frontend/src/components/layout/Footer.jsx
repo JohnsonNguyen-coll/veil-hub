@@ -42,9 +42,9 @@ export function Footer() {
               <LogoMark />
               <span className="font-headline-lg-mobile text-headline-lg-mobile text-veil-white tracking-tighter">VeilHubs</span>
             </div>
-            <p className="font-body-md text-body-md text-veil-white opacity-60">The Confidential Yield Layer.</p>
+            <p className="font-body-md text-body-md text-veil-white opacity-60">The Confidential Prize Layer.</p>
           </div>
-          <FooterColumn title="Protocol" links={["Global Pool", "Private Clubs", "Yields", "Security"]} />
+          <FooterColumn title="Protocol" links={["Global Pool", "Private Clubs", "Prize Funding", "Security"]} />
           <FooterColumn title="Governance" links={["DAO", "Docs", "Brand"]} />
           <FooterColumn title="Socials" links={["X", "Discord", "Telegram", "GitHub"]} />
         </div>

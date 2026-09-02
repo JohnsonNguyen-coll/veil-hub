@@ -11,6 +11,7 @@ export function AccountPage({
   isClaimed,
   pendingPrize,
   pendingPrizeDraw,
+  clubDeposit,
   userDeposit,
   onDecrypt,
   onClaim,
@@ -53,7 +54,7 @@ export function AccountPage({
             />
             <MetricCard
               label="Club Balance"
-              value={isDecrypted ? "0.00 cUSDC" : "••••••"}
+              value={isDecrypted ? `${clubDeposit} cUSDC` : "••••••"}
               status={isDecrypted ? "DECRYPTED" : "CLICK_DECRYPT"}
             />
             <MetricCard

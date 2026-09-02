@@ -16,10 +16,10 @@ export function LandingPage({ goApp, goGlobal, goDocs }) {
             <h1 className="font-headline-xl text-[50px] sm:text-[64px] md:text-[82px] lg:text-[90px] leading-[0.98] text-veil-white font-bold uppercase max-w-5xl">
               Confidential
               <br />
-              <span className="text-veil-purple">Yield Layer</span>
+              <span className="text-veil-purple">Prize Layer</span>
             </h1>
             <p className="font-body-md text-body-md text-veil-white opacity-80 max-w-xl text-lg md:text-xl leading-relaxed">
-              No-loss prize pools with end-to-end FHE encryption. Earn yield with 100% principal protection.
+              No-loss prize pools with end-to-end FHE encryption, Sepolia mock prize funding, and 100% principal protection.
             </p>
             <div className="flex flex-wrap gap-4 mt-6">
               <VeilButton className="px-8 py-4 text-[15px]" onClick={goApp}>
@@ -35,7 +35,7 @@ export function LandingPage({ goApp, goGlobal, goDocs }) {
 
         <section className="border-y border-veil-gray-light py-8">
           <div className="flex flex-wrap justify-between items-center gap-8 px-4">
-            <StatBlock label="Protocol Type" value="No-Loss" status="YIELD_POOL" />
+            <StatBlock label="Protocol Type" value="No-Loss" status="PRIZE_POOL" />
             <StatBlock label="Privacy Layer" value="FHEVM" status="ZAMA_FHE" />
             <StatBlock label="Token Standard" value="ERC-7984" status="CONFIDENTIAL" />
             <div className="flex flex-col gap-2">
@@ -48,9 +48,9 @@ export function LandingPage({ goApp, goGlobal, goDocs }) {
         <section className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-veil-gray-light">
           <FeatureCard
             borderClass="border-r border-b md:border-b-0"
-            description="Deposit stablecoins into encrypted vaults. Interest generated is pooled and awarded securely to random winners."
+            description="Deposit cUSDC into encrypted pools. A keeper-funded Sepolia reserve is awarded securely to random winners."
             index="01"
-            status="YIELD_GENERATION_ACTIVE"
+            status="MOCK_RESERVE_ACTIVE"
             title="No-Loss Pools"
           />
           <FeatureCard
@@ -61,17 +61,17 @@ export function LandingPage({ goApp, goGlobal, goDocs }) {
             title="Complete Privacy"
           />
           <FeatureCard
-            description="Form private clubs to pool capital and increase winning odds collaboratively, maintaining strict group anonymity."
+            description="Form invite-only clubs to pool capital and participate in independent confidential prize draws."
             index="03"
             status="SYNDICATE_SYNC_ON"
-            title="Social Yield"
+            title="Private Clubs"
           />
         </section>
 
         <LandingSection
           eyebrow="Architecture Stream"
           title="End-to-End Confidential Flow"
-          body="Visualized pipeline showing capital encryption, yield stream, and private settlement."
+          body="Visualized pipeline showing encrypted capital, testnet prize funding, and private settlement."
         >
           <ConfidentialFlowDiagram />
         </LandingSection>
@@ -102,7 +102,7 @@ export function LandingPage({ goApp, goGlobal, goDocs }) {
         </LandingSection>
 
         <LandingSection
-          body="Enter privately, earn yield, run encrypted draws, and withdraw 100% principal anytime."
+          body="Enter privately, fund prizes through the Sepolia mock reserve, run encrypted draws, and withdraw 100% principal anytime."
           eyebrow="Prize Cycle"
           layout="split"
           title="THE NO-LOSS LOOP"
@@ -122,7 +122,7 @@ export function LandingPage({ goApp, goGlobal, goDocs }) {
           <div>
             <span className="font-label-caps text-label-caps text-veil-purple uppercase">Ready</span>
             <h2 className="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-veil-white uppercase mt-4">
-              Enter The Confidential Yield Layer
+              Enter The Confidential Prize Layer
             </h2>
             <p className="font-body-md text-body-md text-veil-white opacity-70 mt-4 max-w-2xl">
               Launch the app for the live product flow, or read the docs for the deeper breakdown of pools, privacy, and prize draws.
@@ -208,13 +208,13 @@ function ConfidentialFlowDiagram() {
       icon: "shield"
     },
     {
-      id: "yield",
+      id: "prize-funding",
       number: "03",
-      title: "Yield Engine",
-      subtitle: "Aave / Compound Strategy",
-      desc: "Vault principal generates interest continuously in decentralized lending markets to fund the prize pool.",
-      tag: "YIELD_AUTO_COMPOUND",
-      metric: "+8.4% APY Stream",
+      title: "Prize Funding",
+      subtitle: "Testnet Mock Reserve",
+      desc: "On Sepolia, the keeper funds an encrypted prize reserve. On mainnet, this becomes real yield routing: a yield adapter routes strategy returns into the same confidential prize flow.",
+      tag: "KEEPER_FUNDED_RESERVE",
+      metric: "Mock Reserve Active",
       icon: "trending_up"
     },
     {
@@ -232,7 +232,7 @@ function ConfidentialFlowDiagram() {
       number: "05",
       title: "Private Claim",
       subtitle: "No-Loss Settlement",
-      desc: "Winner claims encrypted yield payout anonymously. All non-winning participants retain 100% of their initial principal.",
+      desc: "Winner claims the encrypted prize payout privately. All non-winning participants retain 100% of their initial principal.",
       tag: "SETTLEMENT_COMPLETE",
       metric: "100% Principal Retained",
       icon: "verified"
@@ -378,7 +378,7 @@ function PrizeCycleDiagram() {
     {
       num: "02",
       title: "YIELD",
-      desc: "Principal generates lending yield continuously into prize pool."
+      desc: "Sepolia uses a keeper-funded mock reserve; future mainnet yield routing can plug real strategy returns into the prize flow."
     },
     {
       num: "03",

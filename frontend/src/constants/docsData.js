@@ -10,7 +10,7 @@ export const docsTopics = [
     sections: [
       {
         title: "Core Idea",
-        body: "VeilHubs is a social prize-savings product. Users deposit into a pool, keep the right to withdraw their principal, and compete for prizes funded by generated yield. The confidential layer changes what the public can see: deposits, balances, winnings, pool totals, and odds are treated as private financial state instead of public leaderboard data."
+        body: "VeilHubs is a social prize-savings product. Users deposit into a pool, keep the right to withdraw their principal, and compete for prizes funded by a Sepolia mock reserve. In a future mainnet version, that reserve becomes real yield routing: a yield adapter routes strategy returns into the same confidential prize flow. The confidential layer changes what the public can see: deposits, balances, winnings, pool totals, and odds are treated as private financial state instead of public leaderboard data."
       },
       {
         title: "Why It Exists",
@@ -25,7 +25,7 @@ export const docsTopics = [
       ["Primary user", "People who want no-loss prize exposure without public balance disclosure"],
       ["Primary flow", "Join Global Pool, deposit encrypted amount, view private position, trigger draw"],
       ["Social layer", "Create a club, share invite, run independent club draws"],
-      ["No-loss rule", "Principal can be withdrawn; prizes are funded from yield"]
+      ["No-loss rule", "Principal can be withdrawn; prizes are funded from the mock reserve on Sepolia"]
     ]
   },
   {
@@ -90,7 +90,7 @@ export const docsTopics = [
     sections: [
       {
         title: "Hidden State",
-        body: "Individual deposits, individual balances, private club totals, odds, prize amounts, and yield performance are sensitive. The interface should never display these values until the authorized user performs decryption for their own data."
+        body: "Individual deposits, individual balances, private club totals, odds, prize amounts, and future yield performance are sensitive. The interface should never display these values until the authorized user performs decryption for their own data."
       },
       {
         title: "Public State",
@@ -112,11 +112,11 @@ export const docsTopics = [
     sections: [
       {
         title: "Goal",
-        body: "The draw should select winners without decrypting individual balances or revealing odds. Any weighted-by-principal claim must remain out of the product until the encrypted weighted selector is implemented and gas-profiled."
+        body: "The draw selects winners without decrypting individual balances or revealing odds. Winner selection is weighted by encrypted principal and uses the publicly decrypted aggregate total only as the randomness bound."
       },
       {
         title: "Current Path",
-        body: "The current contract exposes the draw lifecycle and encrypted prize transfer without a manual prize hook or synthetic finalization path."
+        body: "The current Sepolia contract exposes the draw lifecycle, encrypted prize transfer, keeper-funded mock prize reserve, and user-only prize decryption path."
       },
       {
         title: "Scalability Plan",
@@ -147,7 +147,7 @@ export const docsTopics = [
       },
       {
         title: "Must Be Hardened",
-        body: "A production yield adapter, event indexer, keeper reliability, weighted confidential selection, and broader contract tests need more work before this can be presented as production-ready."
+        body: "Future mainnet yield routing requires a production yield adapter, event indexer, keeper reliability hardening, gas profiling for larger pools, and broader contract tests before this can be presented as production-ready."
       },
       {
         title: "Judging Strategy",
@@ -156,9 +156,9 @@ export const docsTopics = [
     ],
     rows: [
       ["Ready", "UI, routes, metadata API, club UX, encrypted deposit flow"],
-      ["Risk", "Weighted encrypted winner selection cost"],
-      ["Next", "Gas profiling, tests, event sync, audited yield adapter"],
-      ["Messaging", "Do not overclaim final draw fairness until kernel is complete"]
+      ["Risk", "Weighted encrypted winner selection cost at larger pool sizes"],
+      ["Next", "Gas profiling, tests, event sync, audited yield routing adapter"],
+      ["Messaging", "Be explicit that Sepolia uses mock prize funding while future mainnet would use real yield routing"]
     ]
   }
 ];
