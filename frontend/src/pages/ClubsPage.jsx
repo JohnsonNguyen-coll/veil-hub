@@ -9,14 +9,23 @@ const CLUB_PAGE_SIZE = 5;
 
 export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideBalance, onJoinClub, onDeposit, walletBalance }) {
   const directoryClubs = useMemo(() => clubs.filter((pool) => pool.scope === "PRIVATE" && !pool.anonymousMembers), [clubs]);
-  const joinedClubs = useMemo(() => clubs.filter((pool) => pool.scope === "PRIVATE" && pool.joined), [clubs]);
+  const createdClubs = useMemo(
+    () => clubs.filter((pool) => pool.scope === "PRIVATE" && pool.joined && pool.membershipSource === "created"),
+    [clubs]
+  );
+  const joinedClubs = useMemo(
+    () => clubs.filter((pool) => pool.scope === "PRIVATE" && pool.joined && pool.membershipSource !== "created"),
+    [clubs]
+  );
   const [activeClubTab, setActiveClubTab] = useState("directory");
-  const [clubPages, setClubPages] = useState({ directory: 1, joined: 1 });
+  const [clubPages, setClubPages] = useState({ directory: 1, joined: 1, created: 1 });
   const selectableClubs = useMemo(() => {
     const byId = new Map();
-    for (const club of [...joinedClubs, ...directoryClubs]) byId.set(club.id, { ...(byId.get(club.id) || {}), ...club });
+    for (const club of [...createdClubs, ...joinedClubs, ...directoryClubs]) {
+      byId.set(club.id, { ...(byId.get(club.id) || {}), ...club });
+    }
     return [...byId.values()];
-  }, [directoryClubs, joinedClubs]);
+  }, [createdClubs, directoryClubs, joinedClubs]);
   const [selectedClub, setSelectedClub] = useState(selectableClubs[0] || null);
 
   useEffect(() => {
@@ -54,11 +63,15 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
 
   const clubTabs = [
     { id: "directory", label: "Club Directory", count: directoryClubs.length },
-    { id: "joined", label: "Joined Clubs", count: joinedClubs.length }
+    { id: "joined", label: "Joined Clubs", count: joinedClubs.length },
+    { id: "created", label: "Created Clubs", count: createdClubs.length }
   ];
-  const activeClubs = activeClubTab === "joined" ? joinedClubs : directoryClubs;
-  const activeEmptyMessage =
-    activeClubTab === "joined" ? "Deposit, join by invite, or create a club to list it here" : "No public directory clubs yet";
+  const activeClubs = activeClubTab === "created" ? createdClubs : activeClubTab === "joined" ? joinedClubs : directoryClubs;
+  const activeEmptyMessage = {
+    created: "Create a club to list it here",
+    joined: "Join by invite or deposit into a club to list it here",
+    directory: "No public directory clubs yet"
+  }[activeClubTab];
   const pageCount = Math.max(1, Math.ceil(activeClubs.length / CLUB_PAGE_SIZE));
   const activePage = Math.min(clubPages[activeClubTab] || 1, pageCount);
   const pageStart = (activePage - 1) * CLUB_PAGE_SIZE;
@@ -103,7 +116,14 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
                 role="tab"
                 type="button"
               >
-                {tab.label} <span className="opacity-60">{String(tab.count).padStart(2, "0")}</span>
+                <span>{tab.label}</span>
+                <span
+                  className={`ml-2 inline-flex min-w-7 items-center justify-center border px-2 py-0.5 text-[11px] leading-none ${
+                    activeClubTab === tab.id ? "border-veil-white/40 bg-veil-black/20" : "border-veil-gray-light bg-veil-gray-dark text-veil-white/60"
+                  }`}
+                >
+                  {tab.count}
+                </span>
               </button>
             ))}
           </div>

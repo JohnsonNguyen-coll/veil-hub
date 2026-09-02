@@ -379,13 +379,26 @@ function clubRecordKey(club) {
   return String(club?.contractClubId ?? club?.contractId ?? club?.id ?? "");
 }
 
+function membershipSourceRank(source) {
+  return { created: 3, deposit: 2, invite: 1, joined: 0 }[source] ?? 0;
+}
+
+function strongestMembershipSource(left, right) {
+  return membershipSourceRank(right) > membershipSourceRank(left) ? right : left;
+}
+
 function mergeClubRecords(...groups) {
   const merged = new Map();
   for (const group of groups) {
     for (const club of group || []) {
       const key = clubRecordKey(club);
       if (!key) continue;
-      merged.set(key, { ...(merged.get(key) || {}), ...club });
+      const previous = merged.get(key) || {};
+      merged.set(key, {
+        ...previous,
+        ...club,
+        membershipSource: strongestMembershipSource(previous.membershipSource, club.membershipSource)
+      });
     }
   }
   return [...merged.values()];
@@ -397,6 +410,7 @@ function AppContent({ activePage, navigatePage }) {
   const { data: walletClient } = useWalletClient();
   const [toast, setToast] = useState(null);
   const [poolsState, setPoolsState] = useState(defaultPools);
+  const [sessionJoinedClubs, setSessionJoinedClubs] = useState([]);
   const [drawsState, setDrawsState] = useState(defaultDrawHistory);
   const [walletBalance, setWalletBalance] = useState(null);
   const [userDeposit, setUserDeposit] = useState(null);
@@ -443,6 +457,7 @@ function AppContent({ activePage, navigatePage }) {
       if (res.ok) {
         const payload = await res.json();
         const nextJoined = Array.isArray(payload.clubs) ? payload.clubs : payload.club ? [payload.club] : [];
+        setSessionJoinedClubs((current) => mergeClubRecords(current, nextJoined));
         setPoolsState((current) => mergeClubRecords(current, nextJoined));
         return;
       }
@@ -450,7 +465,8 @@ function AppContent({ activePage, navigatePage }) {
       // Keep the current session responsive if backend membership sync is temporarily unavailable.
     }
 
-    const localJoined = [{ ...club, joined: true }];
+    const localJoined = [{ ...club, joined: true, membershipSource: source }];
+    setSessionJoinedClubs((current) => mergeClubRecords(current, localJoined));
     setPoolsState((current) => mergeClubRecords(current, localJoined));
   };
 
@@ -488,7 +504,7 @@ function AppContent({ activePage, navigatePage }) {
     }
 
     const storedJoinedClubs = await fetchJoinedClubs();
-    const rawPools = mergeClubRecords(backendPools.length ? backendPools : defaultPools, storedJoinedClubs);
+    const rawPools = mergeClubRecords(backendPools.length ? backendPools : defaultPools, storedJoinedClubs, sessionJoinedClubs);
     const nextPools = await Promise.all(
       rawPools.map(async (club) => {
         const pool = poolFromClub(club);
@@ -543,8 +559,12 @@ function AppContent({ activePage, navigatePage }) {
 
   useEffect(() => {
     let isMounted = true;
+    setSessionJoinedClubs([]);
     fetchJoinedClubs().then((clubs) => {
-      if (isMounted) setPoolsState((current) => mergeClubRecords(current, clubs));
+      if (isMounted) {
+        setSessionJoinedClubs(clubs);
+        setPoolsState((current) => mergeClubRecords(current, clubs));
+      }
     });
     return () => {
       isMounted = false;
@@ -559,7 +579,7 @@ function AppContent({ activePage, navigatePage }) {
       refreshDraws();
     }, 30000);
     return () => clearInterval(timer);
-  }, [publicClient, clubContract, address]);
+  }, [publicClient, clubContract, address, sessionJoinedClubs]);
 
   const displayPools = useMemo(
     () =>

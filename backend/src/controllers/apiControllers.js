@@ -139,17 +139,74 @@ function findClubByReference(store, clubId, contractClubId) {
   );
 }
 
+function clubWithMembership(club, membership) {
+  return {
+    ...publicJoinedClub(club),
+    membershipSource: membership?.source || "joined",
+    membershipCreatedAt: membership?.createdAt,
+    membershipUpdatedAt: membership?.updatedAt
+  };
+}
+
 function clubsJoinedByAddress(store, address) {
   const normalized = String(address || "").toLowerCase();
-  const joinedKeys = new Set(
-    (store.memberships || [])
-      .filter((membership) => String(membership.address || "").toLowerCase() === normalized)
-      .flatMap((membership) => [membership.clubId, membership.contractClubId].filter(Boolean).map(String))
-  );
+  const membershipByKey = new Map();
+
+  for (const membership of store.memberships || []) {
+    if (String(membership.address || "").toLowerCase() !== normalized) continue;
+    for (const key of [membership.clubId, membership.contractClubId].filter(Boolean).map(String)) {
+      membershipByKey.set(key, membership);
+    }
+  }
 
   return store.clubs
-    .filter((club) => joinedKeys.has(String(club.id)) || joinedKeys.has(String(club.contractClubId)))
-    .map(publicJoinedClub);
+    .map((club) => ({
+      club,
+      membership: membershipByKey.get(String(club.id)) || membershipByKey.get(String(club.contractClubId))
+    }))
+    .filter(({ membership }) => Boolean(membership))
+    .map(({ club, membership }) => clubWithMembership(club, membership));
+}
+
+function membershipSourceRank(source) {
+  return { created: 3, deposit: 2, invite: 1, joined: 0 }[source] ?? 0;
+}
+
+function strongestMembershipSource(left, right) {
+  return membershipSourceRank(right) > membershipSourceRank(left) ? right : left;
+}
+
+function publicClubWithSource(club, source) {
+  return {
+    ...publicJoinedClub(club),
+    membershipSource: source || "joined"
+  };
+}
+
+function upsertMembership(store, { address, club, source }) {
+  if (!address || !club) return;
+  store.memberships ||= [];
+  const normalizedAddress = address.toLowerCase();
+  const existing = store.memberships.find(
+    (membership) => membership.address === normalizedAddress && membership.clubId === club.id
+  );
+  const now = new Date().toISOString();
+
+  if (existing) {
+    existing.contractClubId = club.contractClubId || existing.contractClubId;
+    existing.source = strongestMembershipSource(existing.source, source || "joined");
+    existing.updatedAt = now;
+    return;
+  }
+
+  store.memberships.push({
+    address: normalizedAddress,
+    clubId: club.id,
+    contractClubId: club.contractClubId || null,
+    source: source || "joined",
+    createdAt: now,
+    updatedAt: now
+  });
 }
 
 export async function listClubs(_req, res) {
@@ -183,7 +240,10 @@ export async function createClub(req, res) {
     const createdAt = new Date().toISOString();
     const drawIntervalMs = Number(body.drawIntervalMs || 604800000);
     const existing = store.clubs.find((item) => item.contractClubId === contractClubId || item.id === id);
-    if (existing) return publicClub(existing);
+    if (existing) {
+      upsertMembership(store, { address: admin, club: existing, source: "created" });
+      return publicClubWithSource(existing, "created");
+    }
 
     const nextClub = {
       id,
@@ -208,7 +268,8 @@ export async function createClub(req, res) {
     };
 
     store.clubs.push(nextClub);
-    return publicClub(nextClub);
+    upsertMembership(store, { address: admin, club: nextClub, source: "created" });
+    return publicClubWithSource(nextClub, "created");
   });
 
   json(res, 201, { club });
@@ -261,33 +322,13 @@ export async function recordMembership(req, res) {
   if (!address) return badRequest(res, "Valid wallet address is required");
 
   const result = await updateStore((store) => {
-    store.memberships ||= [];
     const club = findClubByReference(store, body.clubId, body.contractClubId);
     if (!club) return null;
 
-    const normalizedAddress = address.toLowerCase();
-    const existing = store.memberships.find(
-      (membership) => membership.address === normalizedAddress && membership.clubId === club.id
-    );
-    const now = new Date().toISOString();
-
-    if (existing) {
-      existing.contractClubId = club.contractClubId || existing.contractClubId;
-      existing.source = source;
-      existing.updatedAt = now;
-    } else {
-      store.memberships.push({
-        address: normalizedAddress,
-        clubId: club.id,
-        contractClubId: club.contractClubId || null,
-        source,
-        createdAt: now,
-        updatedAt: now
-      });
-    }
+    upsertMembership(store, { address, club, source });
 
     return {
-      club: publicJoinedClub(club),
+      club: publicClubWithSource(club, source),
       clubs: clubsJoinedByAddress(store, address)
     };
   });
