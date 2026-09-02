@@ -470,7 +470,7 @@ function AppContent({ activePage, navigatePage }) {
         const nextJoined = Array.isArray(payload.clubs) ? payload.clubs : payload.club ? [payload.club] : [];
         cacheSessionJoinedClubs((current) => mergeClubRecords(current, nextJoined));
         setPoolsState((current) => mergeClubRecords(current, nextJoined));
-        return;
+        return payload.club || nextJoined[0] || club;
       }
     } catch {
       // Keep the current session responsive if backend membership sync is temporarily unavailable.
@@ -479,6 +479,7 @@ function AppContent({ activePage, navigatePage }) {
     const localJoined = [{ ...club, joined: true, membershipSource: source }];
     cacheSessionJoinedClubs((current) => mergeClubRecords(current, localJoined));
     setPoolsState((current) => mergeClubRecords(current, localJoined));
+    return localJoined[0];
   };
 
   const getDisplayBalance = (value) => {
@@ -561,6 +562,128 @@ function AppContent({ activePage, navigatePage }) {
       userAddress: address,
       walletClient
     });
+  };
+
+  const decryptUserPosition = async () => {
+    const globalBalanceHandle = await publicClient.readContract({
+      ...clubContract,
+      functionName: "encryptedPrincipalOf",
+      args: [0n, address]
+    });
+    const tokenBalanceHandle = await publicClient.readContract({
+      ...tokenContract,
+      functionName: "confidentialBalanceOf",
+      args: [address]
+    });
+
+    const decryptedPrizes = [];
+    const prizeHandleItems = [];
+    const clubPrincipalItems = [];
+    const decryptItems = [
+      { key: "wallet", handle: tokenBalanceHandle, contractAddress: VEIL_TOKEN_ADDRESS },
+      { key: "globalPrincipal", handle: globalBalanceHandle, contractAddress: VEIL_CLUBS_ADDRESS }
+    ];
+
+    for (const pool of displayPools) {
+      const contractId = String(pool.contractId ?? "");
+      if (!contractId || contractId === "0") continue;
+      try {
+        const clubPrincipalHandle = await publicClient.readContract({
+          ...clubContract,
+          functionName: "encryptedPrincipalOf",
+          args: [BigInt(contractId), address]
+        });
+        const key = `clubPrincipal:${contractId}`;
+        clubPrincipalItems.push(key);
+        decryptItems.push({
+          key,
+          handle: clubPrincipalHandle,
+          contractAddress: VEIL_CLUBS_ADDRESS
+        });
+      } catch {
+        // Some backend club metadata can outlive an older deployment; skip unreadable club balances.
+      }
+    }
+
+    try {
+      const pendingWinningsHandle = await publicClient.readContract({
+        ...clubContract,
+        functionName: "encryptedPendingWinningsOf",
+        args: [address]
+      });
+      decryptItems.push({
+        key: "pendingWinnings",
+        handle: pendingWinningsHandle,
+        contractAddress: VEIL_CLUBS_ADDRESS
+      });
+    } catch {
+      // Per-draw prize handles below still provide a fallback for older deployments.
+    }
+
+    for (const draw of recentDraws) {
+      try {
+        const claimed = await publicClient.readContract({
+          ...clubContract,
+          functionName: "isPrizeClaimed",
+          args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
+        });
+        if (claimed) continue;
+
+        const prizeHandle = await publicClient.readContract({
+          ...clubContract,
+          functionName: "encryptedPrizeOf",
+          args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
+        });
+        if (prizeHandle && prizeHandle !== ZERO_BYTES32) {
+          const key = `prize:${draw.clubId}:${draw.drawNumber}`;
+          prizeHandleItems.push({ draw, key });
+          decryptItems.push({
+            key,
+            handle: prizeHandle,
+            contractAddress: VEIL_CLUBS_ADDRESS
+          });
+        }
+      } catch {
+        // No readable prize for this wallet/draw; try the next recent draw.
+      }
+    }
+
+    const decryptedValues = await userDecryptUint64Batch({
+      items: decryptItems,
+      userAddress: address,
+      walletClient
+    });
+    const decryptedDeposit = decryptedValues.globalPrincipal ?? 0n;
+    const decryptedClubDeposit = clubPrincipalItems.reduce((total, key) => total + (decryptedValues[key] ?? 0n), 0n);
+    const decryptedToken = decryptedValues.wallet ?? 0n;
+    const decryptedPendingWinnings = decryptedValues.pendingWinnings ?? 0n;
+
+    for (const { draw, key } of prizeHandleItems) {
+      const decryptedPrize = decryptedValues[key] ?? 0n;
+      if (decryptedPrize > 0n) {
+        decryptedPrizes.push({ ...draw, amount: decryptedPrize });
+      }
+    }
+
+    const decryptedDrawPrizeTotal = decryptedPrizes.reduce((total, prize) => total + prize.amount, 0n);
+    const decryptedPrizeTotal = decryptedPendingWinnings > 0n ? decryptedPendingWinnings : decryptedDrawPrizeTotal;
+
+    setUserDeposit(decryptedDeposit);
+    setClubDeposit(decryptedClubDeposit);
+    setWalletBalance(decryptedToken);
+    setPendingPrize(decryptedPrizeTotal);
+    setPendingPrizes(decryptedPrizes);
+    setPendingPrizeDraw(decryptedPrizes[0] || null);
+    setIsClaimed(decryptedPrizes.length === 0);
+    setIsDecrypted(true);
+
+    return {
+      clubDeposit: decryptedClubDeposit,
+      pendingPrize: decryptedPrizeTotal,
+      pendingPrizes: decryptedPrizes,
+      userDeposit: decryptedDeposit,
+      walletBalance: decryptedToken
+    };
   };
 
   useEffect(() => {
@@ -675,11 +798,10 @@ function AppContent({ activePage, navigatePage }) {
       if (availableBalance == null) {
         showToast(
           "Balance Check Required",
-          "Sign EIP-712 to decrypt your cUSDC balance locally before deposit validation."
+          "Sign EIP-712 to decrypt your wallet position locally before deposit validation."
         );
-        availableBalance = await getDecryptedTokenBalance();
-        setWalletBalance(availableBalance);
-        setIsDecrypted(true);
+        const decryptedPosition = await decryptUserPosition();
+        availableBalance = decryptedPosition.walletBalance;
       }
 
       if (availableBalance < parsedAmount) {
@@ -727,7 +849,14 @@ function AppContent({ activePage, navigatePage }) {
       if (isUserRejectedRequest(err)) {
         showToast("Deposit Cancelled", "User rejected the wallet request.");
       } else {
-        showToast("Deposit Error", err.shortMessage || err.message || "Encrypted deposit failed.");
+        const depositError = err.shortMessage || err.message || "Encrypted deposit failed.";
+        const isDecryptFailure = String(depositError).toLowerCase().includes("decrypt");
+        showToast(
+          isDecryptFailure ? "Decrypt Error" : "Deposit Error",
+          isDecryptFailure
+            ? "Could not decrypt your cUSDC balance for deposit validation. Retry, or click Decrypt Balance first."
+            : depositError
+        );
       }
     }
   };
@@ -740,124 +869,11 @@ function AppContent({ activePage, navigatePage }) {
 
     try {
       showToast("Decrypting Balance", "Requesting EIP-712 signature to decrypt positions...");
-      const globalBalanceHandle = await publicClient.readContract({
-        ...clubContract,
-        functionName: "encryptedPrincipalOf",
-        args: [0n, address]
-      });
-      const tokenBalanceHandle = await publicClient.readContract({
-        ...tokenContract,
-        functionName: "confidentialBalanceOf",
-        args: [address]
-      });
-
-      let decryptedDeposit = 0n;
-      let decryptedClubDeposit = 0n;
-      let decryptedToken = 0n;
-      let decryptedPendingWinnings = 0n;
-      const decryptedPrizes = [];
-      const prizeHandleItems = [];
-      const clubPrincipalItems = [];
-      const decryptItems = [
-        { key: "wallet", handle: tokenBalanceHandle, contractAddress: VEIL_TOKEN_ADDRESS },
-        { key: "globalPrincipal", handle: globalBalanceHandle, contractAddress: VEIL_CLUBS_ADDRESS }
-      ];
-
-      for (const pool of displayPools) {
-        const contractId = String(pool.contractId ?? "");
-        if (!contractId || contractId === "0") continue;
-        try {
-          const clubPrincipalHandle = await publicClient.readContract({
-            ...clubContract,
-            functionName: "encryptedPrincipalOf",
-            args: [BigInt(contractId), address]
-          });
-          const key = `clubPrincipal:${contractId}`;
-          clubPrincipalItems.push(key);
-          decryptItems.push({
-            key,
-            handle: clubPrincipalHandle,
-            contractAddress: VEIL_CLUBS_ADDRESS
-          });
-        } catch {
-          // Some backend club metadata can outlive an older deployment; skip unreadable club balances.
-        }
-      }
-
-      try {
-        const pendingWinningsHandle = await publicClient.readContract({
-          ...clubContract,
-          functionName: "encryptedPendingWinningsOf",
-          args: [address]
-        });
-        decryptItems.push({
-          key: "pendingWinnings",
-          handle: pendingWinningsHandle,
-          contractAddress: VEIL_CLUBS_ADDRESS
-        });
-      } catch {
-        // Per-draw prize handles below still provide a fallback for older deployments.
-      }
-
-      for (const draw of recentDraws) {
-        try {
-          const claimed = await publicClient.readContract({
-            ...clubContract,
-            functionName: "isPrizeClaimed",
-            args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
-          });
-          if (claimed) continue;
-
-          const prizeHandle = await publicClient.readContract({
-            ...clubContract,
-            functionName: "encryptedPrizeOf",
-            args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
-          });
-          if (prizeHandle && prizeHandle !== ZERO_BYTES32) {
-            const key = `prize:${draw.clubId}:${draw.drawNumber}`;
-            const item = {
-              key,
-              handle: prizeHandle,
-              contractAddress: VEIL_CLUBS_ADDRESS
-            };
-            prizeHandleItems.push({ draw, key });
-            decryptItems.push(item);
-          }
-        } catch {
-          // No readable prize for this wallet/draw; try the next recent draw.
-        }
-      }
-
-      const decryptedValues = await userDecryptUint64Batch({
-        items: decryptItems,
-        userAddress: address,
-        walletClient
-      });
-      decryptedDeposit = decryptedValues.globalPrincipal ?? 0n;
-      decryptedClubDeposit = clubPrincipalItems.reduce((total, key) => total + (decryptedValues[key] ?? 0n), 0n);
-      decryptedToken = decryptedValues.wallet ?? 0n;
-      decryptedPendingWinnings = decryptedValues.pendingWinnings ?? 0n;
-      for (const { draw, key } of prizeHandleItems) {
-        const decryptedPrize = decryptedValues[key] ?? 0n;
-        if (decryptedPrize > 0n) {
-          decryptedPrizes.push({ ...draw, amount: decryptedPrize });
-        }
-      }
-
-      const decryptedDrawPrizeTotal = decryptedPrizes.reduce((total, prize) => total + prize.amount, 0n);
-      const decryptedPrizeTotal = decryptedPendingWinnings > 0n ? decryptedPendingWinnings : decryptedDrawPrizeTotal;
-      setUserDeposit(decryptedDeposit);
-      setClubDeposit(decryptedClubDeposit);
-      setWalletBalance(decryptedToken);
-      setPendingPrize(decryptedPrizeTotal);
-      setPendingPrizes(decryptedPrizes);
-      setPendingPrizeDraw(decryptedPrizes[0] || null);
-      setIsClaimed(decryptedPrizes.length === 0);
-      setIsDecrypted(true);
+      const decryptedPosition = await decryptUserPosition();
       showToast(
         "Local Decrypt Complete",
-        decryptedPrizeTotal > 0n
-          ? `${decryptedPrizes.length} pending prize${decryptedPrizes.length === 1 ? "" : "s"} decrypted locally.`
+        decryptedPosition.pendingPrize > 0n
+          ? `${decryptedPosition.pendingPrizes.length} pending prize${decryptedPosition.pendingPrizes.length === 1 ? "" : "s"} decrypted locally.`
           : "Your cUSDC balance and principal were decrypted locally for this wallet."
       );
     } catch (err) {
@@ -1267,9 +1283,10 @@ function AppContent({ activePage, navigatePage }) {
 
       if (res.ok) {
         const data = await res.json();
-        await rememberJoinedClub(data.club, "created");
+        const createdClub = await rememberJoinedClub(data.club, "created");
         await refreshPools();
         showToast("Club Created", `Private Club ${clubData.name} deployed at ID #${createdContractClubId}!`, hash);
+        return createdClub || data.club;
       } else {
         showToast("Club Onchain OK", `Deployed onchain (#${createdContractClubId}), metadata sync warning.`, hash);
       }
@@ -1297,10 +1314,10 @@ function AppContent({ activePage, navigatePage }) {
       });
       if (res.ok) {
         const data = await res.json();
-        await rememberJoinedClub(data.club, "invite");
+        const joinedClub = await rememberJoinedClub(data.club, "invite");
         await refreshPools();
         showToast("Joined Club", `Joined ${data.club.name} via invite ${inviteCode}.`);
-        return;
+        return joinedClub || data.club;
       }
       showToast("Invite Invalid", "Invite code was not accepted by the backend.");
     } catch {

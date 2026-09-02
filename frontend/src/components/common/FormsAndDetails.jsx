@@ -47,6 +47,8 @@ export function TransactionForm({ isDecrypted, mode, onDecrypt, onHideBalance, o
 }
 
 export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDeposit, walletBalance }) {
+  const [depositAmount, setDepositAmount] = useState("10");
+
   if (!club) {
     return (
       <div className="p-6 border border-veil-gray-light bg-veil-gray-dark text-veil-white opacity-70 font-data-sm">
@@ -71,8 +73,32 @@ export function ClubDetail({ club, isDecrypted, onDecrypt, onHideBalance, onDepo
         />
         <MetricCard label="Prize" value={club.prize || "•••••• USDC"} status="PRIVATE" />
       </div>
+      <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+          <LabelInput
+            inputMode="decimal"
+            label="Deposit Amount"
+            min="0"
+            onChange={(event) => setDepositAmount(event.target.value)}
+            placeholder="10"
+            step="0.01"
+            type="number"
+            value={depositAmount}
+          />
+          <div className="flex flex-col justify-end">
+            <VeilButton className="h-[54px] min-w-[180px]" disabled={!String(depositAmount).trim()} onClick={() => onDeposit(depositAmount)}>
+              Deposit cUSDC
+            </VeilButton>
+          </div>
+        </div>
+        <VeilButton className="w-fit" onClick={() => {
+          setDepositAmount("10");
+          onDeposit(10);
+        }} variant="secondary">
+          Quick 10 cUSDC
+        </VeilButton>
+      </div>
       <div className="flex flex-wrap gap-3">
-        <VeilButton onClick={() => onDeposit(10)}>Quick Deposit 10 cUSDC</VeilButton>
         <VeilButton onClick={isDecrypted ? onHideBalance : onDecrypt} variant="secondary">
           {isDecrypted ? `Hide Balance ${walletBalance} cUSDC` : "Decrypt Balance"}
         </VeilButton>

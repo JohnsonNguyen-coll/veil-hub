@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 
-export function LabelInput({ label, placeholder, value, onChange }) {
+export function LabelInput({ inputMode, label, min, onChange, placeholder, step, type = "text", value }) {
   return (
     <label className="flex flex-col gap-2">
       <span className="font-label-caps text-label-caps text-veil-white opacity-50 uppercase">{label}</span>
       <input
         className="bg-veil-gray-dark border border-veil-gray-light text-veil-white font-data-sm text-data-sm px-4 py-4 focus:border-veil-purple focus:ring-0"
+        inputMode={inputMode}
+        min={min}
         onChange={onChange}
         placeholder={placeholder}
+        step={step}
+        type={type}
         value={value}
       />
     </label>

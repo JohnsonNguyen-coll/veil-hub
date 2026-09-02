@@ -128,12 +128,15 @@ async function publicDecryptTotalPrincipal(totalPrincipalHandle) {
   }
 }
 
-async function userDecryptUint64({ handle, contractAddress, clients }) {
+async function userDecryptUint64Batch({ items, clients }) {
+  const decryptItems = items.filter((item) => item?.handle && item.handle !== ZERO_BYTES32);
+  if (!decryptItems.length) return {};
+
   const instance = await getFheInstance();
   const keypair = instance.generateKeypair();
   const startTimestamp = Math.floor(Date.now() / 1000);
   const durationDays = 1;
-  const contractAddresses = [contractAddress];
+  const contractAddresses = [...new Set(decryptItems.map((item) => item.contractAddress))];
   const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays);
   const signature = await clients.walletClient.signTypedData({
     account: clients.account,
@@ -146,7 +149,7 @@ async function userDecryptUint64({ handle, contractAddress, clients }) {
   });
 
   const result = await instance.userDecrypt(
-    [{ handle, contractAddress }],
+    decryptItems.map(({ handle, contractAddress }) => ({ handle, contractAddress })),
     keypair.privateKey,
     keypair.publicKey,
     signature.replace(/^0x/, ""),
@@ -155,18 +158,44 @@ async function userDecryptUint64({ handle, contractAddress, clients }) {
     startTimestamp,
     durationDays
   );
-  return BigInt(result[handle] ?? result[handle.toLowerCase()] ?? 0);
+
+  return Object.fromEntries(
+    decryptItems.map((item) => [item.key, BigInt(result[item.handle] ?? result[item.handle.toLowerCase()] ?? 0)])
+  );
 }
 
-async function readKeeperTokenBalance(clients) {
-  const handle = await clients.publicClient.readContract({
+async function userDecryptUint64({ handle, contractAddress, clients }) {
+  const decrypted = await userDecryptUint64Batch({
+    items: [{ key: "value", handle, contractAddress }],
+    clients
+  });
+  return decrypted.value ?? 0n;
+}
+
+async function readKeeperTokenBalance(clients, clubId) {
+  const tokenBalanceHandle = await clients.publicClient.readContract({
     address: VEIL_TOKEN_ADDRESS,
     abi: VEIL_TOKEN_KEEPER_ABI,
     functionName: "confidentialBalanceOf",
     args: [clients.account.address]
   });
-  if (!handle || handle === ZERO_BYTES32) return 0n;
-  return userDecryptUint64({ handle, contractAddress: VEIL_TOKEN_ADDRESS, clients });
+  if (!tokenBalanceHandle || tokenBalanceHandle === ZERO_BYTES32) return 0n;
+
+  const decryptItems = [{ key: "wallet", handle: tokenBalanceHandle, contractAddress: VEIL_TOKEN_ADDRESS }];
+  try {
+    const keeperPrincipalHandle = await clients.publicClient.readContract({
+      address: VEIL_CLUBS_ADDRESS,
+      abi: VEIL_CLUBS_KEEPER_ABI,
+      functionName: "encryptedPrincipalOf",
+      args: [BigInt(clubId), clients.account.address]
+    });
+    decryptItems.push({ key: "clubPrincipal", handle: keeperPrincipalHandle, contractAddress: VEIL_CLUBS_ADDRESS });
+  } catch {
+    // Balance validation can still proceed if this deployment cannot expose the keeper's club principal handle.
+  }
+
+  const decrypted = await userDecryptUint64Batch({ items: decryptItems, clients });
+  return decrypted.wallet ?? 0n;
 }
 
 async function ensureKeeperTokenOperator(clients) {
@@ -227,7 +256,7 @@ async function fundPrizeReserve({ clients, clubId, clubName }) {
     return false;
   }
 
-  const balance = await readKeeperTokenBalance(clients);
+  const balance = await readKeeperTokenBalance(clients, clubId);
   console.log(
     `[keeper] auto-fund preflight for ${clubName}: keeper balance ${formatUnits(balance, TOKEN_DECIMALS)} cUSDC, funding ${KEEPER_YIELD_AMOUNT} cUSDC, gas limit ${KEEPER_FUND_GAS_LIMIT}.`
   );

@@ -7,6 +7,17 @@ import { ClubDetail, ClubForm, InviteForm } from "../components/common/FormsAndD
 
 const CLUB_PAGE_SIZE = 5;
 
+function normalizeClub(club) {
+  if (!club) return null;
+  return {
+    ...club,
+    contractId: String(club.contractId ?? club.contractClubId ?? ""),
+    members: String(club.members ?? club.memberCount ?? 0),
+    tvl: club.tvl || "encrypted",
+    prize: club.prize || "•••••• USDC"
+  };
+}
+
 export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideBalance, onJoinClub, onDeposit, walletBalance }) {
   const directoryClubs = useMemo(() => clubs.filter((pool) => pool.scope === "PRIVATE" && !pool.anonymousMembers), [clubs]);
   const createdClubs = useMemo(
@@ -95,6 +106,22 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
     });
   };
 
+  const handleCreateClub = async (clubData) => {
+    const createdClub = await onCreateClub?.(clubData);
+    if (!createdClub) return;
+    setActiveClubTab("created");
+    setClubPages((current) => ({ ...current, created: 1 }));
+    setSelectedClub(normalizeClub(createdClub));
+  };
+
+  const handleJoinClub = async (inviteCode) => {
+    const joinedClub = await onJoinClub?.(inviteCode);
+    if (!joinedClub) return;
+    setActiveClubTab("joined");
+    setClubPages((current) => ({ ...current, joined: 1 }));
+    setSelectedClub(normalizeClub(joinedClub));
+  };
+
   return (
     <div>
       <PageHeader
@@ -160,17 +187,19 @@ export function ClubsPage({ clubs, isDecrypted, onCreateClub, onDecrypt, onHideB
             isDecrypted={isDecrypted}
             onDecrypt={onDecrypt}
             onHideBalance={onHideBalance}
-            onDeposit={(amt) => onDeposit(amt, selectedClub?.name || "Private Club", selectedClub?.contractId || 0n)}
+            onDeposit={(amt) =>
+              onDeposit(amt, selectedClub?.name || "Private Club", selectedClub?.contractId ?? selectedClub?.contractClubId ?? 0n)
+            }
             walletBalance={walletBalance}
           />
         </Panel>
       </section>
       <section className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
         <Panel title="Create Private Club">
-          <ClubForm onCreate={onCreateClub} />
+          <ClubForm onCreate={handleCreateClub} />
         </Panel>
         <Panel title="Join By Invite">
-          <InviteForm onJoin={onJoinClub} />
+          <InviteForm onJoin={handleJoinClub} />
         </Panel>
       </section>
     </div>

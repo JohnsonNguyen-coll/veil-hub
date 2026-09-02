@@ -92,6 +92,16 @@ export const VEIL_CLUBS_KEEPER_ABI = [
   },
   {
     type: "function",
+    name: "encryptedPrincipalOf",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "clubId", type: "uint256" },
+      { name: "member", type: "address" }
+    ],
+    outputs: [{ name: "principal", type: "bytes32" }]
+  },
+  {
+    type: "function",
     name: "accrueYield",
     stateMutability: "nonpayable",
     inputs: [
