@@ -62,8 +62,8 @@ export function AccountPage({
             />
             <MetricCard
               label="Odds"
-              value={isDecrypted ? "0.0%" : "••••••"}
-              status="CONFIDENTIAL"
+              value="PRIVATE"
+              status={isDecrypted ? "NOT_PUBLIC" : "CONFIDENTIAL"}
             />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6">
