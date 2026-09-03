@@ -2,7 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import solc from "solc";
 
-const root = process.cwd();
+const cwd = process.cwd();
+const root = fs.existsSync(path.join(cwd, "contracts", "VeilClubs.sol"))
+  ? cwd
+  : path.join(cwd, "contracts");
+if (cwd === root) {
+  process.chdir(path.resolve(root, ".."));
+}
 const sources = {};
 
 for (const file of fs.readdirSync(path.join(root, "contracts"))) {
@@ -58,5 +64,12 @@ if (errors.some((error) => error.severity === "error")) {
 fs.mkdirSync(path.join(root, "artifacts-solc"), { recursive: true });
 fs.writeFileSync(path.join(root, "artifacts-solc", "compile-output.json"), JSON.stringify(output, null, 2));
 
-console.log(`Compiled ${Object.keys(output.contracts || {}).length} source groups with solc ${solc.version()}`);
+const frontendContractsDir = path.resolve(root, "..", "frontend", "src", "contracts");
+if (fs.existsSync(frontendContractsDir)) {
+  fs.writeFileSync(
+    path.join(frontendContractsDir, "VeilClubsABI.json"),
+    JSON.stringify(output.contracts["contracts/VeilClubs.sol"].VeilClubs.abi, null, 2)
+  );
+}
 
+console.log(`Compiled ${Object.keys(output.contracts || {}).length} source groups with solc ${solc.version()}`);

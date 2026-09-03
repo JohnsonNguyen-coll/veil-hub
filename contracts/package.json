@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/compile-solc.js",
+    "build": "cd .. && node contracts/scripts/compile-solc.js",
     "build:hardhat": "hardhat compile",
     "compile": "hardhat compile",
-    "compile:solc": "node scripts/compile-solc.js",
+    "compile:solc": "cd .. && node contracts/scripts/compile-solc.js",
     "test": "hardhat test",
     "deploy": "node scripts/deploy.js",
     "deploy:sepolia": "node scripts/deploy.js"

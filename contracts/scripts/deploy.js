@@ -82,7 +82,7 @@ async function main() {
   if (!fs.existsSync(artifactPath)) {
     console.log("⚙️ Đang biên dịch contracts...");
     const { execSync } = await import("node:child_process");
-    execSync("node scripts/compile-solc.js", { stdio: "inherit" });
+    execSync("node contracts/scripts/compile-solc.js", { cwd: path.resolve(".."), stdio: "inherit" });
   }
 
   const compileOutput = JSON.parse(fs.readFileSync(artifactPath, "utf8"));

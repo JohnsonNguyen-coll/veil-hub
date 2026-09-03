@@ -85,6 +85,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
         uint256 memberCount
     );
     event PrizeClaimed(uint256 indexed clubId, uint256 indexed drawId, euint64 prizeHandle);
+    event PendingWinningsClaimed(address indexed member, euint64 prizeHandle);
 
     error ClubNotFound(uint256 clubId);
     error NotClubAdminOrKeeper(uint256 clubId, address caller);
@@ -95,6 +96,7 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     error InvalidDrawId(uint256 drawId);
     error PrizeAlreadyClaimed(uint256 clubId, uint256 drawId, address member);
     error ClaimBatchLengthMismatch();
+    error DrawPrizeClaimsDisabled();
     error WeightedDrawRequiresPublicTotal();
     error InvalidTotalPrincipal(uint64 totalPrincipal);
     error InvalidYieldAmount();
@@ -294,34 +296,30 @@ contract VeilClubs is Ownable, ZamaEthereumConfig {
     }
 
     /// @notice Allows a member to claim their encrypted prize from a completed draw.
-    function claimPrize(uint256 clubId, uint256 drawId) external {
-        _claimPrize(clubId, drawId, msg.sender);
+    function claimPrize(uint256 clubId, uint256 drawId) external pure {
+        clubId;
+        drawId;
+        revert DrawPrizeClaimsDisabled();
     }
 
     /// @notice Allows a member to claim multiple encrypted prizes in one wallet transaction.
-    function claimPrizes(uint256[] calldata clubIds, uint256[] calldata drawIds) external {
-        if (clubIds.length != drawIds.length) revert ClaimBatchLengthMismatch();
-        for (uint256 i = 0; i < clubIds.length; i++) {
-            _claimPrize(clubIds[i], drawIds[i], msg.sender);
-        }
+    function claimPrizes(uint256[] calldata clubIds, uint256[] calldata drawIds) external pure {
+        clubIds;
+        drawIds;
+        revert DrawPrizeClaimsDisabled();
     }
 
-    function _claimPrize(uint256 clubId, uint256 drawId, address member) private {
-        Club storage club = _requireClub(clubId);
-        if (drawId == 0 || drawId > club.drawCount) revert InvalidDrawId(drawId);
-        if (_prizeClaimed[clubId][drawId][member]) revert PrizeAlreadyClaimed(clubId, drawId, member);
-
-        euint64 prize = _drawPrizes[clubId][drawId][member];
-        _prizeClaimed[clubId][drawId][member] = true;
-        _drawPrizes[clubId][drawId][member] = FHE.asEuint64(0);
-        _encryptedPendingWinnings[member] = FHE.sub(_encryptedPendingWinnings[member], prize);
+    /// @notice Claims all cumulative encrypted pending winnings for the caller in one transaction.
+    function claimPendingWinnings() external {
+        euint64 prize = _encryptedPendingWinnings[msg.sender];
+        _encryptedPendingWinnings[msg.sender] = FHE.asEuint64(0);
 
         FHE.allowTransient(prize, address(depositToken));
-        depositToken.confidentialTransfer(member, prize);
+        depositToken.confidentialTransfer(msg.sender, prize);
 
-        _allowUserAndContract(prize, member);
-        _allowUserAndContract(_encryptedPendingWinnings[member], member);
-        emit PrizeClaimed(clubId, drawId, prize);
+        _allowUserAndContract(prize, msg.sender);
+        _allowUserAndContract(_encryptedPendingWinnings[msg.sender], msg.sender);
+        emit PendingWinningsClaimed(msg.sender, prize);
     }
 
     function clubView(uint256 clubId) external view returns (ClubView memory view_) {

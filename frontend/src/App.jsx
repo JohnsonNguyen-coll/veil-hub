@@ -29,6 +29,8 @@ const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
 const FAUCET_UNDERLYING_AMOUNT = 100_000_000n;
 const TOKEN_DECIMALS = 6;
 const MAX_EUINT64 = (1n << 64n) - 1n;
+const USER_DECRYPT_MAX_UINT64_ITEMS = 32;
+const USER_DECRYPT_CLUB_PRINCIPAL_LIMIT = 24;
 const PUBLIC_SEPOLIA_RPC_URLS = [
   "https://ethereum-sepolia-rpc.publicnode.com",
   "https://sepolia.gateway.tenderly.co",
@@ -127,6 +129,9 @@ async function encryptUint64Input(contractAddress, userAddress, amount) {
 async function userDecryptUint64Batch({ items, userAddress, walletClient }) {
   const decryptItems = items.filter((item) => item?.handle && item.handle !== ZERO_BYTES32);
   if (!decryptItems.length) return {};
+  if (decryptItems.length > USER_DECRYPT_MAX_UINT64_ITEMS) {
+    throw new Error(`User decrypt request has ${decryptItems.length} encrypted values; maximum is ${USER_DECRYPT_MAX_UINT64_ITEMS}.`);
+  }
 
   return withFheInstance(async (instance) => {
     const keypair = instance.generateKeypair();
@@ -421,8 +426,6 @@ function AppContent({ activePage, navigatePage }) {
   const [clubDeposit, setClubDeposit] = useState(null);
   const [clubDepositsById, setClubDepositsById] = useState({});
   const [pendingPrize, setPendingPrize] = useState(null);
-  const [pendingPrizes, setPendingPrizes] = useState([]);
-  const [pendingPrizeDraw, setPendingPrizeDraw] = useState(null);
   const [isDecrypted, setIsDecrypted] = useState(false);
   const [isClaimed, setIsClaimed] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
@@ -585,8 +588,6 @@ function AppContent({ activePage, navigatePage }) {
       args: [address]
     });
 
-    const decryptedPrizes = [];
-    const prizeHandleItems = [];
     const clubPrincipalItems = [];
     const nextClubDepositsById = {};
     const decryptItems = [
@@ -595,6 +596,7 @@ function AppContent({ activePage, navigatePage }) {
     ];
 
     for (const pool of displayPools) {
+      if (clubPrincipalItems.length >= USER_DECRYPT_CLUB_PRINCIPAL_LIMIT) break;
       const contractId = String(pool.contractId ?? "");
       if (!contractId || contractId === "0") continue;
       try {
@@ -630,34 +632,6 @@ function AppContent({ activePage, navigatePage }) {
       // Per-draw prize handles below still provide a fallback for older deployments.
     }
 
-    for (const draw of recentDraws) {
-      try {
-        const claimed = await publicClient.readContract({
-          ...clubContract,
-          functionName: "isPrizeClaimed",
-          args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
-        });
-        if (claimed) continue;
-
-        const prizeHandle = await publicClient.readContract({
-          ...clubContract,
-          functionName: "encryptedPrizeOf",
-          args: [BigInt(draw.clubId), BigInt(draw.drawNumber), address]
-        });
-        if (prizeHandle && prizeHandle !== ZERO_BYTES32) {
-          const key = `prize:${draw.clubId}:${draw.drawNumber}`;
-          prizeHandleItems.push({ draw, key });
-          decryptItems.push({
-            key,
-            handle: prizeHandle,
-            contractAddress: VEIL_CLUBS_ADDRESS
-          });
-        }
-      } catch {
-        // No readable prize for this wallet/draw; try the next recent draw.
-      }
-    }
-
     const decryptedValues = await userDecryptUint64Batch({
       items: decryptItems,
       userAddress: address,
@@ -672,31 +646,18 @@ function AppContent({ activePage, navigatePage }) {
     const decryptedToken = decryptedValues.wallet ?? 0n;
     const decryptedPendingWinnings = decryptedValues.pendingWinnings ?? 0n;
 
-    for (const { draw, key } of prizeHandleItems) {
-      const decryptedPrize = decryptedValues[key] ?? 0n;
-      if (decryptedPrize > 0n) {
-        decryptedPrizes.push({ ...draw, amount: decryptedPrize });
-      }
-    }
-
-    const decryptedDrawPrizeTotal = decryptedPrizes.reduce((total, prize) => total + prize.amount, 0n);
-    const decryptedPrizeTotal = decryptedPendingWinnings > 0n ? decryptedPendingWinnings : decryptedDrawPrizeTotal;
-
     setUserDeposit(decryptedDeposit);
     setClubDeposit(decryptedClubDeposit);
     setClubDepositsById(nextClubDepositsById);
     setWalletBalance(decryptedToken);
-    setPendingPrize(decryptedPrizeTotal);
-    setPendingPrizes(decryptedPrizes);
-    setPendingPrizeDraw(decryptedPrizes[0] || null);
-    setIsClaimed(decryptedPrizes.length === 0);
+    setPendingPrize(decryptedPendingWinnings);
+    setIsClaimed(decryptedPendingWinnings === 0n);
     setIsDecrypted(true);
 
     return {
       clubDeposit: decryptedClubDeposit,
       clubDepositsById: nextClubDepositsById,
-      pendingPrize: decryptedPrizeTotal,
-      pendingPrizes: decryptedPrizes,
+      pendingPrize: decryptedPendingWinnings,
       userDeposit: decryptedDeposit,
       walletBalance: decryptedToken
     };
@@ -762,22 +723,6 @@ function AppContent({ activePage, navigatePage }) {
     activePoolsCount === 0 ? "AWAITING DEPOSIT" : hasDueDraw ? "DRAW QUEUED" : nextDrawAt ? formatCountdown(nextDrawAt, nowMs) : "AWAITING PRIZE";
   const dashboardNextDrawStatus =
     activePoolsCount === 0 ? "NO_ONCHAIN_MEMBERS" : hasDueDraw ? "KEEPER_DUE" : hasPoolsAwaitingPrize ? "KEEPER_FUNDING" : "KEEPER_WINDOW";
-  const recentDraws = useMemo(
-    () =>
-      drawsState
-        .filter((draw) => draw?.clubId != null && draw?.drawNumber != null)
-        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()),
-    [drawsState]
-  );
-  const displayPendingPrizes = useMemo(
-    () =>
-      pendingPrizes.map((prize) => ({
-        ...prize,
-        displayAmount: getDisplayBalance(prize.amount)
-      })),
-    [pendingPrizes]
-  );
-
   const isDrawOperatorForClub = (clubId) => {
     const pool = displayPools.find((item) => String(item.contractId) === String(clubId));
     return sameAddress(address, pool?.admin) || sameAddress(address, pool?.keeper);
@@ -889,7 +834,7 @@ function AppContent({ activePage, navigatePage }) {
       showToast(
         "Local Decrypt Complete",
         decryptedPosition.pendingPrize > 0n
-          ? `${decryptedPosition.pendingPrizes.length} pending prize${decryptedPosition.pendingPrizes.length === 1 ? "" : "s"} decrypted locally.`
+          ? "Pending prize total decrypted locally. You can claim all pending winnings in one transaction."
           : "Your cUSDC balance and principal were decrypted locally for this wallet."
       );
     } catch (err) {
@@ -1037,88 +982,37 @@ function AppContent({ activePage, navigatePage }) {
     }
   };
 
-  const removePendingPrize = (claimedPrize) => {
-    const nextPendingPrizes = pendingPrizes.filter(
-      (prize) =>
-        String(prize.clubId) !== String(claimedPrize.clubId) ||
-        String(prize.drawNumber) !== String(claimedPrize.drawNumber)
-    );
-    setPendingPrizes(nextPendingPrizes);
-    setPendingPrize(nextPendingPrizes.reduce((total, prize) => total + prize.amount, 0n));
-    setPendingPrizeDraw(nextPendingPrizes[0] || null);
-    setIsClaimed(nextPendingPrizes.length === 0);
-  };
-
-  const handleClaim = async (selectedPrize = null) => {
+  const handleClaimPendingWinnings = async () => {
     if (!address || !walletClient || !publicClient || !IS_CONTRACT_CONFIGURED) {
       showToast("Wallet Required", "Connect wallet to claim prize payouts.");
       return;
     }
-    const claimTarget = selectedPrize || pendingPrizes[0] || pendingPrizeDraw;
-    if (!claimTarget || !pendingPrize || pendingPrize <= 0n) {
-      showToast("Decrypt Prize First", "Decrypt your pending prizes locally before claiming.");
+    if (!pendingPrize || pendingPrize <= 0n) {
+      showToast("No Pending Prize", "Decrypt your balance first to confirm pending winnings.");
       return;
     }
 
     try {
-      showToast("Claiming Prize", `Submitting prize claim for draw #${claimTarget.drawNumber}...`);
+      showToast("Claiming Pending Prize", "Submitting cumulative pending prize claim...");
       const hash = await walletClient.writeContract({
         ...clubContract,
-        functionName: "claimPrize",
-        args: [BigInt(claimTarget.clubId), BigInt(claimTarget.drawNumber)]
+        functionName: "claimPendingWinnings"
       });
-      showToast("Transaction Sent", "Waiting for claim confirmation...", hash);
+      showToast("Transaction Sent", "Waiting for pending prize claim confirmation...", hash);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status === "success") {
-        removePendingPrize(claimTarget);
-        showToast("Prize Claimed", "Encrypted prize handle claimed into your confidential token balance.", hash);
-      } else {
-        showToast("Claim Reverted", "No claimable prize found or transaction reverted.", hash);
-      }
-    } catch (err) {
-      if (isUserRejectedRequest(err)) {
-        showToast("Claim Cancelled", "User rejected the transaction.");
-      } else {
-        showToast("Claim Error", err.shortMessage || err.message || "Claim failed.");
-      }
-    }
-  };
-
-  const handleClaimAll = async () => {
-    if (!address || !walletClient || !publicClient || !IS_CONTRACT_CONFIGURED) {
-      showToast("Wallet Required", "Connect wallet to claim prize payouts.");
-      return;
-    }
-    if (!pendingPrizes.length) {
-      showToast("No Prize To Claim", "Decrypt your pending prizes locally before claiming.");
-      return;
-    }
-
-    try {
-      const clubIds = pendingPrizes.map((prize) => BigInt(prize.clubId));
-      const drawIds = pendingPrizes.map((prize) => BigInt(prize.drawNumber));
-      showToast("Claiming Prizes", `Submitting ${pendingPrizes.length} pending prize claim${pendingPrizes.length === 1 ? "" : "s"}...`);
-      const hash = await walletClient.writeContract({
-        ...clubContract,
-        functionName: "claimPrizes",
-        args: [clubIds, drawIds]
-      });
-      showToast("Transaction Sent", "Waiting for claim-all confirmation...", hash);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status === "success") {
-        setIsClaimed(true);
+        setWalletBalance((current) => (current == null ? current : current + pendingPrize));
         setPendingPrize(0n);
-        setPendingPrizes([]);
-        setPendingPrizeDraw(null);
-        showToast("Prizes Claimed", "All pending encrypted prizes were claimed into your confidential token balance.", hash);
+        setIsClaimed(true);
+        showToast("Pending Prize Claimed", "All cumulative encrypted winnings were claimed into your confidential token balance.", hash);
       } else {
-        showToast("Claim Reverted", "One or more pending prizes could not be claimed.", hash);
+        showToast("Claim Reverted", "Pending prize claim reverted.", hash);
       }
     } catch (err) {
       if (isUserRejectedRequest(err)) {
         showToast("Claim Cancelled", "User rejected the transaction.");
       } else {
-        showToast("Claim Error", err.shortMessage || err.message || "Claim all failed.");
+        showToast("Claim Error", err.shortMessage || err.message || "Pending prize claim failed.");
       }
     }
   };
@@ -1367,7 +1261,6 @@ function AppContent({ activePage, navigatePage }) {
             nextDrawStatus={dashboardNextDrawStatus}
             pools={displayPools}
             pendingPrize={getDisplayBalance(pendingPrize)}
-            pendingPrizeDraw={pendingPrizeDraw}
             userDeposit={getDisplayBalance(userDeposit)}
             walletBalance={getDisplayBalance(walletBalance)}
           />
@@ -1403,16 +1296,13 @@ function AppContent({ activePage, navigatePage }) {
           <AccountPage
             isClaimed={isClaimed}
             isDecrypted={isDecrypted}
-            onClaim={handleClaim}
-            onClaimAll={handleClaimAll}
+            onClaimPending={handleClaimPendingWinnings}
             onDecrypt={handleDecrypt}
             onFaucet={handleFaucet}
             onHideBalance={handleHideBalance}
             onUnwrap={handleUnwrap}
             onWithdraw={handleWithdraw}
             pendingPrize={getDisplayBalance(pendingPrize)}
-            pendingPrizeDraw={pendingPrizeDraw}
-            pendingPrizes={displayPendingPrizes}
             clubDeposit={getDisplayBalance(clubDeposit)}
             userDeposit={getDisplayBalance(userDeposit)}
             walletBalance={getDisplayBalance(walletBalance)}

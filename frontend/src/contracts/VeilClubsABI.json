@@ -37,6 +37,11 @@
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "DrawPrizeClaimsDisabled",
+    "type": "error"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -412,6 +417,25 @@
     "inputs": [
       {
         "indexed": true,
+        "internalType": "address",
+        "name": "member",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "euint64",
+        "name": "prizeHandle",
+        "type": "bytes32"
+      }
+    ],
+    "name": "PendingWinningsClaimed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "uint256",
         "name": "clubId",
         "type": "uint256"
@@ -563,6 +587,13 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "claimPendingWinnings",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -577,7 +608,7 @@
     ],
     "name": "claimPrize",
     "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -595,7 +626,7 @@
     ],
     "name": "claimPrizes",
     "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "pure",
     "type": "function"
   },
   {

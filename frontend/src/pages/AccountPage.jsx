@@ -4,33 +4,24 @@ import { VeilButton, ConnectWalletButton } from "../components/common/VeilButton
 import { MetricCard, Panel } from "../components/common/Panel.jsx";
 import { LabelInput } from "../components/common/Inputs.jsx";
 
-const PRIZE_PAGE_SIZE = 5;
-
 export function AccountPage({
   isDecrypted,
   isClaimed,
   pendingPrize,
-  pendingPrizeDraw,
   clubDeposit,
   userDeposit,
   onDecrypt,
-  onClaim,
-  onClaimAll,
+  onClaimPending,
   onFaucet,
   onHideBalance,
   onUnwrap,
   onWithdraw,
-  pendingPrizes = [],
   walletBalance
 }) {
   const [unwrapAmount, setUnwrapAmount] = useState("");
-  const [prizePage, setPrizePage] = useState(1);
-  const hasPendingPrizes = pendingPrizes.length > 0;
+  const pendingPrizeAmount = Number(pendingPrize || 0);
+  const hasPendingPrize = isDecrypted && pendingPrizeAmount > 0;
   const canWithdrawGlobalPrincipal = Number(userDeposit || 0) > 0;
-  const prizePageCount = Math.max(1, Math.ceil(pendingPrizes.length / PRIZE_PAGE_SIZE));
-  const safePrizePage = Math.min(prizePage, prizePageCount);
-  const prizePageStart = (safePrizePage - 1) * PRIZE_PAGE_SIZE;
-  const visiblePendingPrizes = pendingPrizes.slice(prizePageStart, prizePageStart + PRIZE_PAGE_SIZE);
 
   return (
     <div>
@@ -61,7 +52,7 @@ export function AccountPage({
             <MetricCard
               label="Pending Prize"
               value={isDecrypted ? `${pendingPrize} cUSDC` : "••••••"}
-              status={pendingPrizeDraw ? "READY_TO_CLAIM" : isClaimed ? "CLAIMED" : "NO_PENDING_PRIZE"}
+              status={hasPendingPrize ? "READY_TO_CLAIM" : isClaimed ? "CLAIMED" : "NO_PENDING_PRIZE"}
             />
             <MetricCard
               label="Odds"
@@ -108,70 +99,24 @@ export function AccountPage({
           action={
             <VeilButton
               className="px-4 py-2 text-[12px]"
-              disabled={!hasPendingPrizes || isClaimed}
-              onClick={onClaimAll}
+              disabled={!hasPendingPrize}
+              onClick={onClaimPending}
               variant="secondary"
             >
-              Claim All
+              Claim Pending Prize
             </VeilButton>
           }
-          title="Pending Prizes"
+          title="Pending Prize Claim"
         >
           {isDecrypted ? (
-            hasPendingPrizes ? (
-              <div className="border border-veil-gray-light">
-                {visiblePendingPrizes.map((prize) => (
-                  <div
-                    className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-veil-gray-light px-5 py-4 last:border-b-0"
-                    key={`${prize.clubId}-${prize.drawNumber}`}
-                  >
-                    <div className="min-w-0">
-                      <div className="font-data-display text-data-display text-veil-white font-bold">
-                        {prize.displayAmount} cUSDC
-                      </div>
-                      <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase mt-2">
-                        &gt; {prize.pool || prize.clubName || "Global Pool"} / Draw #{prize.drawNumber}
-                      </div>
-                    </div>
-                    <VeilButton
-                      className="px-4 py-2 text-[12px]"
-                      onClick={() => onClaim(prize)}
-                      variant="secondary"
-                    >
-                      Claim
-                    </VeilButton>
-                  </div>
-                ))}
-                {prizePageCount > 1 ? (
-                  <div className="flex items-center justify-between gap-3 px-5 py-4">
-                    <VeilButton
-                      className="px-4 py-2 text-[12px]"
-                      disabled={safePrizePage === 1}
-                      onClick={() => setPrizePage((current) => Math.max(1, current - 1))}
-                      variant="secondary"
-                    >
-                      Prev
-                    </VeilButton>
-                    <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase">
-                      Page {safePrizePage} / {prizePageCount}
-                    </div>
-                    <VeilButton
-                      className="px-4 py-2 text-[12px]"
-                      disabled={safePrizePage === prizePageCount}
-                      onClick={() => setPrizePage((current) => Math.min(prizePageCount, current + 1))}
-                      variant="secondary"
-                    >
-                      Next
-                    </VeilButton>
-                  </div>
-                ) : null}
+            <div className="border border-veil-gray-light px-5 py-6">
+              <div className="font-data-display text-data-display text-veil-white font-bold">
+                {hasPendingPrize ? `${pendingPrize} cUSDC` : "No Pending Prize"}
               </div>
-            ) : (
-              <div className="border border-veil-gray-light px-5 py-6 font-data-display text-data-display text-veil-white font-bold">
-                No Pending Prize
-                <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase mt-2">&gt; CLAIMS_CLEAR</div>
+              <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase mt-2">
+                &gt; {hasPendingPrize ? "CUMULATIVE_WINNINGS_READY" : "CLAIMS_CLEAR"}
               </div>
-            )
+            </div>
           ) : (
             <div className="border border-veil-gray-light px-5 py-6 font-data-display text-data-display text-veil-white font-bold">
               ••••••

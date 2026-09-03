@@ -17,7 +17,6 @@ export function DashboardPage({
   onDecrypt,
   onFaucet,
   pendingPrize,
-  pendingPrizeDraw,
   walletBalance
 }) {
   const hasClaimablePrize = isDecrypted && !isClaimed && Number(pendingPrize || 0) > 0;
@@ -27,9 +26,7 @@ export function DashboardPage({
       ? "CLAIMED"
       : hasClaimablePrize
         ? "PRIZE_READY"
-        : pendingPrizeDraw
-          ? "DRAW_PENDING"
-          : "NO_PENDING_PRIZE"
+        : "NO_PENDING_PRIZE"
     : "EIP712_REQUIRED";
 
   return (
