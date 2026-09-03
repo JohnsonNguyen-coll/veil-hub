@@ -690,7 +690,11 @@ function AppContent({ activePage, navigatePage }) {
       decryptErrors = Object.keys(decryptedValues).length === 0 ? [fastDecrypt.error, ...fallbackErrors] : fallbackErrors;
     }
 
-    const hasPartialDecryptErrors = decryptErrors.length > 0;
+    const expectedKeys = new Set(decryptItems.filter((item) => item?.handle && item.handle !== ZERO_BYTES32).map((item) => item.key));
+    const decryptedKeys = new Set(Object.keys(decryptedValues));
+    const missingKeys = [...expectedKeys].filter((key) => !decryptedKeys.has(key));
+    const retriedDecrypt = Boolean(fastDecrypt.error);
+    const hasPartialDecryptErrors = missingKeys.length > 0;
     if (Object.keys(decryptedValues).length === 0 && hasPartialDecryptErrors) {
       throw decryptErrors[0];
     }
@@ -716,6 +720,7 @@ function AppContent({ activePage, navigatePage }) {
       clubDepositsById: nextClubDepositsById,
       partial: hasPartialDecryptErrors,
       pendingPrize: decryptedPendingWinnings,
+      retried: retriedDecrypt,
       userDeposit: decryptedDeposit,
       walletBalance: decryptedToken
     };
@@ -876,8 +881,10 @@ function AppContent({ activePage, navigatePage }) {
       showToast(
         decryptedPosition.partial ? "Partial Decrypt Complete" : "Local Decrypt Complete",
         decryptedPosition.partial
-          ? "Some encrypted handles could not be decrypted, but available wallet position data was loaded."
-          : decryptedPosition.pendingPrize > 0n
+          ? "Wallet position data loaded, but one or more encrypted fields still need a retry."
+          : decryptedPosition.retried
+            ? "Wallet position decrypted after retrying smaller batches."
+            : decryptedPosition.pendingPrize > 0n
             ? "Pending prize total decrypted locally. You can claim all pending winnings in one transaction."
             : "Your cUSDC balance and principal were decrypted locally for this wallet."
       );
