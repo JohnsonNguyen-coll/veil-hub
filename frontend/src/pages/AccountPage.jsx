@@ -22,6 +22,12 @@ export function AccountPage({
   const pendingPrizeAmount = Number(pendingPrize || 0);
   const hasPendingPrize = isDecrypted && pendingPrizeAmount > 0;
   const canWithdrawGlobalPrincipal = Number(userDeposit || 0) > 0;
+  const claimStatus = !isDecrypted ? "USER_DECRYPT_REQUIRED" : hasPendingPrize ? "READY_TO_CLAIM" : "CLAIMS_CLEAR";
+  const claimCopy = !isDecrypted
+    ? "Decrypt your wallet position first to check whether you have cumulative pending winnings."
+    : hasPendingPrize
+      ? "Claim all cumulative pending winnings into your confidential cUSDC balance in one transaction."
+      : "No pending prize is currently available for this wallet.";
 
   return (
     <div>
@@ -106,23 +112,30 @@ export function AccountPage({
               Claim Pending Prize
             </VeilButton>
           }
-          title="Pending Prize Claim"
+          title="Claim Center"
         >
-          {isDecrypted ? (
-            <div className="border border-veil-gray-light px-5 py-6">
-              <div className="font-data-display text-data-display text-veil-white font-bold">
-                {hasPendingPrize ? `${pendingPrize} cUSDC` : "No Pending Prize"}
-              </div>
-              <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase mt-2">
-                &gt; {hasPendingPrize ? "CUMULATIVE_WINNINGS_READY" : "CLAIMS_CLEAR"}
-              </div>
+          <div className="border border-veil-gray-light px-5 py-6">
+            <div className="font-data-display text-data-display text-veil-white font-bold">
+              {hasPendingPrize ? "Prize Ready" : "Pending Prize Claim"}
             </div>
-          ) : (
-            <div className="border border-veil-gray-light px-5 py-6 font-data-display text-data-display text-veil-white font-bold">
-              ••••••
-              <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase mt-2">&gt; USER_DECRYPT_REQUIRED</div>
+            <p className="mt-3 max-w-xl text-[15px] leading-7 text-veil-white/70">
+              {claimCopy}
+            </p>
+            <div className="mt-6 grid gap-2">
+              {["ONE_TRANSACTION_CLAIM", "NO_DRAW_SCAN_REQUIRED", "PRIVATE_TO_WALLET"].map((item) => (
+                <div
+                  className="flex items-center justify-between border border-veil-gray-light bg-veil-gray-dark px-4 py-3 font-data-sm text-data-sm uppercase"
+                  key={item}
+                >
+                  <span className="text-veil-white/55">&gt; {item}</span>
+                  <span className="h-2 w-2 bg-veil-purple" />
+                </div>
+              ))}
             </div>
-          )}
+            <div className="font-data-sm text-data-sm text-veil-white opacity-50 uppercase mt-5">
+              &gt; {claimStatus}
+            </div>
+          </div>
         </Panel>
       </section>
     </div>
