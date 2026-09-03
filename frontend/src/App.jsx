@@ -174,6 +174,17 @@ async function userDecryptUint64({ handle, contractAddress, userAddress, walletC
   return decrypted.value ?? 0n;
 }
 
+async function tryUserDecryptUint64Batch({ items, userAddress, walletClient }) {
+  try {
+    return {
+      error: null,
+      values: await userDecryptUint64Batch({ items, userAddress, walletClient })
+    };
+  } catch (error) {
+    return { error, values: {} };
+  }
+}
+
 async function publicDecryptUint64(handle) {
   return withFheInstance(async (instance) => {
     const result = await instance.publicDecrypt([handle]);
@@ -632,11 +643,57 @@ function AppContent({ activePage, navigatePage }) {
       // Per-draw prize handles below still provide a fallback for older deployments.
     }
 
-    const decryptedValues = await userDecryptUint64Batch({
+    let decryptedValues = {};
+    let decryptErrors = [];
+    const fastDecrypt = await tryUserDecryptUint64Batch({
       items: decryptItems,
       userAddress: address,
       walletClient
     });
+
+    if (!fastDecrypt.error) {
+      decryptedValues = fastDecrypt.values;
+    } else {
+      if (isUserRejectedRequest(fastDecrypt.error)) throw fastDecrypt.error;
+      const fallbackErrors = [];
+      const walletDecrypt = await tryUserDecryptUint64Batch({
+        items: [{ key: "wallet", handle: tokenBalanceHandle, contractAddress: VEIL_TOKEN_ADDRESS }],
+        userAddress: address,
+        walletClient
+      });
+      if (walletDecrypt.error) fallbackErrors.push(walletDecrypt.error);
+      decryptedValues = { ...decryptedValues, ...walletDecrypt.values };
+
+      const coreClubItems = decryptItems.filter((item) => item.key === "globalPrincipal" || item.key === "pendingWinnings");
+      const coreClubDecrypt = await tryUserDecryptUint64Batch({
+        items: coreClubItems,
+        userAddress: address,
+        walletClient
+      });
+      if (coreClubDecrypt.error) fallbackErrors.push(coreClubDecrypt.error);
+      decryptedValues = { ...decryptedValues, ...coreClubDecrypt.values };
+
+      const clubDecryptItems = clubPrincipalItems
+        .map(({ key }) => decryptItems.find((decryptItem) => decryptItem.key === key))
+        .filter(Boolean);
+      for (let i = 0; i < clubDecryptItems.length; i += 8) {
+        const chunk = clubDecryptItems.slice(i, i + 8);
+        const clubDecrypt = await tryUserDecryptUint64Batch({
+          items: chunk,
+          userAddress: address,
+          walletClient
+        });
+        if (clubDecrypt.error) fallbackErrors.push(clubDecrypt.error);
+        decryptedValues = { ...decryptedValues, ...clubDecrypt.values };
+      }
+
+      decryptErrors = Object.keys(decryptedValues).length === 0 ? [fastDecrypt.error, ...fallbackErrors] : fallbackErrors;
+    }
+
+    const hasPartialDecryptErrors = decryptErrors.length > 0;
+    if (Object.keys(decryptedValues).length === 0 && hasPartialDecryptErrors) {
+      throw decryptErrors[0];
+    }
     const decryptedDeposit = decryptedValues.globalPrincipal ?? 0n;
     const decryptedClubDeposit = clubPrincipalItems.reduce((total, { key, contractId }) => {
       const balance = decryptedValues[key] ?? 0n;
@@ -657,6 +714,7 @@ function AppContent({ activePage, navigatePage }) {
     return {
       clubDeposit: decryptedClubDeposit,
       clubDepositsById: nextClubDepositsById,
+      partial: hasPartialDecryptErrors,
       pendingPrize: decryptedPendingWinnings,
       userDeposit: decryptedDeposit,
       walletBalance: decryptedToken
@@ -755,17 +813,8 @@ function AppContent({ activePage, navigatePage }) {
 
     try {
       const parsedAmount = parseTokenAmount(amountInput);
-      let availableBalance = isDecrypted && walletBalance != null ? walletBalance : null;
-      if (availableBalance == null) {
-        showToast(
-          "Balance Check Required",
-          "Sign EIP-712 to decrypt your wallet position locally before deposit validation."
-        );
-        const decryptedPosition = await decryptUserPosition();
-        availableBalance = decryptedPosition.walletBalance;
-      }
-
-      if (availableBalance < parsedAmount) {
+      const availableBalance = isDecrypted && walletBalance != null ? walletBalance : null;
+      if (availableBalance != null && availableBalance < parsedAmount) {
         showToast(
           "Insufficient Balance",
           `Wallet has ${formatUnits(availableBalance, TOKEN_DECIMALS)} cUSDC, but this deposit needs ${formatUnits(parsedAmount, TOKEN_DECIMALS)} cUSDC.`
@@ -793,14 +842,13 @@ function AppContent({ activePage, navigatePage }) {
           const joinedPool = displayPools.find((pool) => String(pool.contractId) === String(clubId));
           if (joinedPool) await rememberJoinedClub(joinedPool, "deposit");
         }
-        if (isDecrypted || availableBalance != null) {
+        if (isDecrypted && availableBalance != null) {
           setWalletBalance(availableBalance - parsedAmount);
           if (BigInt(clubId) === 0n) {
             setUserDeposit((current) => (current == null ? parsedAmount : current + parsedAmount));
           } else {
             setClubDeposit((current) => (current == null ? parsedAmount : current + parsedAmount));
           }
-          setIsDecrypted(true);
         }
         showToast("Deposit Confirmed", `Encrypted deposit of ${amountInput} cUSDC confirmed in ${poolName}.`, hash);
       } else {
@@ -811,13 +859,7 @@ function AppContent({ activePage, navigatePage }) {
         showToast("Deposit Cancelled", "User rejected the wallet request.");
       } else {
         const depositError = err.shortMessage || err.message || "Encrypted deposit failed.";
-        const isDecryptFailure = String(depositError).toLowerCase().includes("decrypt");
-        showToast(
-          isDecryptFailure ? "Decrypt Error" : "Deposit Error",
-          isDecryptFailure
-            ? "Could not decrypt your wallet cUSDC balance. Please retry the action after the current wallet request settles."
-            : depositError
-        );
+        showToast("Deposit Error", depositError);
       }
     }
   };
@@ -832,10 +874,12 @@ function AppContent({ activePage, navigatePage }) {
       showToast("Decrypting Balance", "Requesting EIP-712 signature to decrypt positions...");
       const decryptedPosition = await decryptUserPosition();
       showToast(
-        "Local Decrypt Complete",
-        decryptedPosition.pendingPrize > 0n
-          ? "Pending prize total decrypted locally. You can claim all pending winnings in one transaction."
-          : "Your cUSDC balance and principal were decrypted locally for this wallet."
+        decryptedPosition.partial ? "Partial Decrypt Complete" : "Local Decrypt Complete",
+        decryptedPosition.partial
+          ? "Some encrypted handles could not be decrypted, but available wallet position data was loaded."
+          : decryptedPosition.pendingPrize > 0n
+            ? "Pending prize total decrypted locally. You can claim all pending winnings in one transaction."
+            : "Your cUSDC balance and principal were decrypted locally for this wallet."
       );
     } catch (err) {
       if (isUserRejectedRequest(err)) {
@@ -849,8 +893,6 @@ function AppContent({ activePage, navigatePage }) {
   const handleHideBalance = () => {
     setIsDecrypted(false);
     setPendingPrize(null);
-    setPendingPrizes([]);
-    setPendingPrizeDraw(null);
     setClubDeposit(null);
     setClubDepositsById({});
     showToast("Balance Hidden", "Positions hidden in local component state.");
