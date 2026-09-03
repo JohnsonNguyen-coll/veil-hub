@@ -14,14 +14,15 @@ VeilHubs recreates the core PoolTogether mechanic with ERC-7984 confidential cUS
 
 - Faucet: mint Sepolia test USDC, approve the wrapper, and wrap into cUSDC.
 - Deposit: encrypt a cUSDC amount client-side and submit the encrypted input proof onchain.
-- Decrypt locally: use EIP-712 user decryption to view only the connected wallet's balance, principal, and prize handles.
+- Decrypt locally: use EIP-712 user decryption to view only the connected wallet's balance, principal, club balances, and cumulative pending winnings.
 - Draw: a keeper automatically runs the draw when `nextDrawAt` is reached.
-- Claim: winners decrypt their prize handle and claim the encrypted prize into their cUSDC balance.
+- Claim: winners claim cumulative pending winnings into their confidential cUSDC balance in one transaction.
 - Withdraw: users can withdraw their full encrypted principal at any time.
+- Private Clubs: create invite-only or public-directory clubs, join by invite code, deposit into specific clubs, and browse joined or created clubs separately.
 
 ## Confidentiality Design
 
-Individual deposits, wallet balances, principal positions, prize amounts, and losing prize handles remain encrypted as `euint64` values. The frontend never stores decrypted balances onchain or in the backend; decrypted values live only in local UI state after the connected wallet signs an EIP-712 user-decryption request.
+Individual deposits, wallet balances, principal positions, club balances, prize amounts, and pending winnings remain encrypted as `euint64` values. The frontend never stores decrypted balances onchain or in the backend; decrypted values live only in local UI state after the connected wallet signs an EIP-712 user-decryption request.
 
 Winner selection is performed onchain over encrypted balances:
 
@@ -31,11 +32,13 @@ Winner selection is performed onchain over encrypted balances:
 4. The keeper calls `triggerWeightedDraw(clubId, commitment, totalPrincipal, proof)`.
 5. The contract verifies the KMS proof with `FHE.checkSignatures`.
 6. The contract generates FHE randomness, computes a random threshold modulo the verified aggregate total, walks encrypted cumulative principal buckets, and allocates the encrypted prize to the selected bucket with `FHE.select`.
-7. Only each member can user-decrypt their own prize handle; the winner sees a non-zero prize.
+7. The selected winner's encrypted pending winnings are increased; each wallet can user-decrypt only its own cumulative pending winnings.
 
 ### Documented Leakage
 
 The aggregate pool principal is public-decrypted at draw time so randomness can be bounded by a verified total without revealing individual balances. Individual deposit amounts and per-wallet odds are not disclosed by the contract. Member count, pool ids, timestamps, draw ids, and transaction hashes are public metadata.
+
+Draw history is public metadata only. The app does not scan or decrypt the full historical draw list to decide claimability; cumulative pending winnings are tracked in encrypted per-wallet account state and claimed through `claimPendingWinnings()`.
 
 ## Yield Source
 
@@ -46,9 +49,18 @@ Sepolia does not provide production yield for the demo token, so VeilHubs uses a
 - The app encrypts the funding amount and calls `accrueYield(clubId, encryptedAmount, inputProof)`.
 - The next draw awards the encrypted reserve.
 
-The backend keeper can also fund this reserve automatically before each due draw. This is still a mock yield source: it transfers cUSDC from the keeper wallet into the encrypted prize reserve; it does not mint tokens or generate real lending yield. Keep the keeper wallet funded with Sepolia ETH for gas and enough cUSDC for `KEEPER_YIELD_AMOUNT`.
+The backend keeper can also fund this reserve automatically before each due draw. This is still a mock yield source for Sepolia: it transfers cUSDC from the keeper wallet into the encrypted prize reserve; it does not mint tokens or generate real lending yield. Keep the keeper wallet funded with Sepolia ETH for gas and enough cUSDC for `KEEPER_YIELD_AMOUNT`.
 
-A production integration would replace `accrueYield` funding with a yield adapter that deposits principal into a real strategy and periodically transfers the generated confidential yield into `encryptedYield`.
+A future mainnet integration would replace keeper-funded `accrueYield` calls with production yield routing. A strategy adapter can route principal into a real yield source and periodically transfer only the generated confidential yield into the encrypted prize reserve.
+
+## Private Clubs
+
+VeilHubs supports custom club pools in addition to the Global Pool. Club creators choose a name, minimum deposit, draw frequency, and directory visibility:
+
+- Invite Only: the club is hidden from the public directory and members join with an invite code.
+- Public Directory: the club appears in the app directory, but deposits, balances, odds, and winnings remain encrypted.
+
+The Clubs page separates Club Directory, Joined Clubs, and Created Clubs so users can browse public pools, revisit memberships, and manage the clubs they created without relying on browser-only local storage.
 
 ## Repository
 
@@ -72,11 +84,11 @@ Useful contract env:
 SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
 PRIVATE_KEY=0xyour_deployer_private_key
 KEEPER_ADDRESS=0xyour_keeper_wallet
-GLOBAL_DRAW_INTERVAL_SECONDS=120
+GLOBAL_DRAW_INTERVAL_SECONDS=86400
 DEPOSIT_TOKEN_ADDRESS=0x7c5BF43B851c1dff1a4feE8dB225b87f2C223639
 ```
 
-Use `GLOBAL_DRAW_INTERVAL_SECONDS=120` for demo testing. Use a longer interval for production-like deployments.
+Use a short `GLOBAL_DRAW_INTERVAL_SECONDS` only for internal testing. Use a longer interval, such as daily draws, for production-like public deployments.
 
 ## Deploy Backend Keeper
 
@@ -141,7 +153,8 @@ VITE_SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
 - Encrypted per-user balance and principal accounting.
 - Onchain weighted draw over encrypted balances with FHE randomness.
 - KMS-verified aggregate total used for bounded weighted selection.
-- Winner-only user decryption and encrypted prize claim.
+- EIP-712 user decryption of wallet position and cumulative pending winnings.
+- One-transaction pending prize claim through `claimPendingWinnings()`.
 - No-loss principal withdrawal.
 - Automated keeper flow plus documented admin-funded mock yield.
 - Faucet flow and clear error handling for approval, balance, network, and wallet rejection.

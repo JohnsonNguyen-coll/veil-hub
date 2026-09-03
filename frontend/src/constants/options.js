@@ -23,7 +23,6 @@ export const AWAITING_PRIZE_HINT =
   "Pool has members, but the keeper has not funded the encrypted prize reserve yet. This usually takes around 1-2 minutes.";
 
 export const DRAW_FREQUENCY_OPTIONS = [
-  { label: "2 minutes (test)", seconds: 120, milliseconds: 120_000 },
   { label: "Daily", seconds: 86_400, milliseconds: 86_400_000 },
   { label: "Weekly", seconds: 604_800, milliseconds: 604_800_000 },
   { label: "Monthly", seconds: 2_592_000, milliseconds: 2_592_000_000 }
