@@ -10,10 +10,10 @@ import { Footer } from "../components/layout/Footer.jsx";
 export function LandingPage({ goApp, goGlobal, goDocs }) {
   return (
     <>
-      <main className="flex-grow pt-10 md:pt-14 pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full flex flex-col gap-20 md:gap-24">
+      <main className="flex-grow pt-[108px] md:pt-[96px] lg:pt-[84px] pb-16 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full flex flex-col gap-20 md:gap-24">
         <section className="flex flex-col lg:flex-row items-center gap-8 lg:gap-12 min-h-[520px] relative">
-          <div className="flex-1 flex flex-col gap-6 z-10 pt-4 md:pt-0">
-            <h1 className="font-headline-xl text-[50px] sm:text-[64px] md:text-[82px] lg:text-[90px] leading-[0.98] text-veil-white font-bold uppercase max-w-5xl">
+          <div className="flex-1 flex flex-col gap-6 z-10">
+            <h1 className="font-headline-xl text-[40px] sm:text-[58px] md:text-[78px] lg:text-[90px] leading-[1.02] text-veil-white font-bold uppercase max-w-5xl">
               Confidential
               <br />
               <span className="text-veil-purple">Prize Layer</span>
